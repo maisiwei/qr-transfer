@@ -54,8 +54,8 @@ int main(int argc, const char * argv[]) {
             return 1;
         }
         
-        // Chunk the text into parts of 250 characters (low density = very easy to scan)
-        NSUInteger chunkSize = 250;
+        // Chunk the text into parts of 100 characters (low density = very easy to scan)
+        NSUInteger chunkSize = 100;
         NSMutableArray *chunks = [NSMutableArray array];
         NSUInteger length = text.length;
         for (NSUInteger i = 0; i < length; i += chunkSize) {

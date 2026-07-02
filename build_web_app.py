@@ -394,7 +394,7 @@ def main():
         <textarea id="send-input" placeholder="Type or paste your text here..." oninput="handleInput()"></textarea>
         <div class="char-counter">
             <span id="char-count">0 characters</span>
-            <span id="chunk-count">0 chunks (250 chars/chunk)</span>
+            <span id="chunk-count">0 chunks (100 chars/chunk)</span>
         </div>
         <button id="btn-start-send" class="btn" onclick="startSending()">Generate QR Loop</button>
         
@@ -548,8 +548,8 @@ def main():
         var text = document.getElementById('send-input').value;
         document.getElementById('char-count').innerText = text.length + ' characters';
         
-        var chunksCount = Math.ceil(text.length / 250);
-        document.getElementById('chunk-count').innerText = chunksCount + ' chunks (250 chars/chunk)';
+        var chunksCount = Math.ceil(text.length / 100);
+        document.getElementById('chunk-count').innerText = chunksCount + ' chunks (100 chars/chunk)';
     }}
 
     function startSending() {{
@@ -563,7 +563,7 @@ def main():
         if (sendTimer) clearInterval(sendTimer);
         
         // Chunk
-        var chunkSize = 250;
+        var chunkSize = 100;
         qrChunks = [];
         for (var i = 0; i < text.length; i += chunkSize) {{
             qrChunks.push(text.substring(i, i + chunkSize));
@@ -581,7 +581,7 @@ def main():
             text: "1/1:Init",
             width: 218,
             height: 218,
-            correctLevel: QRCode.CorrectLevel.M
+            correctLevel: QRCode.CorrectLevel.L
         }});
         
         currentFrameIndex = 0;
