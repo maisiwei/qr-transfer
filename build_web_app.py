@@ -1,5 +1,6 @@
 import urllib.request
 import os
+import re
 
 def download_lib(url):
     print(f"Downloading {url}...")
@@ -13,8 +14,17 @@ def main():
     
     try:
         qrcode_js = download_lib(qrcode_js_url)
-        # Patch the minifier bug in qrcode.js where 'b' is only initialized once in the loop header
-        qrcode_js = qrcode_js.replace('for(var b=[],d=0,e=this.data.length;e>d;d++){', 'for(var b=[],d=0,e=this.data.length;e>d;d++){b=[];')
+        
+        # Replace the buggy UTF-8 character loop in qrcode.js with standard TextEncoder
+        a_pattern = r'function a\(a\)\{this\.mode=c\.MODE_8BIT_BYTE,[\s\S]*?unshift\(239\)\)\}'
+        new_a = 'function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a;var bytes=new TextEncoder().encode(a);this.parsedData=[];if(bytes.length!==a.length){this.parsedData.push(239,187,191)}for(var i=0;i<bytes.length;i++){this.parsedData.push(bytes[i])}}'
+        qrcode_js = re.sub(a_pattern, new_a, qrcode_js)
+
+        # Replace capacity calculator s(a) to also use TextEncoder for exact byte counts
+        s_pattern = r'function s\(a\)\{var b=encodeURI\(a\)[\s\S]*?return b\.length\+\(b\.length!=a\?3:0\)\}'
+        new_s = 'function s(a){var bytes=new TextEncoder().encode(a);return bytes.length+(bytes.length!==a.length?3:0)}'
+        qrcode_js = re.sub(s_pattern, new_s, qrcode_js)
+        
         jsqr_js = download_lib(jsqr_js_url)
     except Exception as e:
         print(f"Error downloading libraries: {e}")
