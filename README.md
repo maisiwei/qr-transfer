@@ -46,6 +46,32 @@ Double-click `install.command` in the project folder. This will:
 
 ---
 
+## 🛠️ macOS Shortcuts Integration (Alternative)
+
+Instead of using the macOS Quick Action/Service, you can create a custom global workflow using the native **Shortcuts** app on macOS. This allows you to check the clipboard and trigger the QR generator with a custom hotkey.
+
+### How to set it up:
+1. Open the **Shortcuts** app on your Mac.
+2. Click **+** (plus icon) to create a new shortcut and name it **Send QR Loop**.
+3. In the right-hand panel, search for the **If** action and drag it into the editor:
+   - Configure it to read: `If [Clipboard] [has any value]`
+4. Inside the **If** block (above *Otherwise*), search for and drag a **Run Shell Script** action:
+   - Change the shell dropdown to `zsh`.
+   - Paste the following command into the script text box:
+     ```bash
+     TEXT=$(pbpaste); GIF_PATH=$($HOME/Code/qr-transfer/qr-gif-generator "$TEXT"); qlmanage -p "$GIF_PATH" >/dev/null 2>&1
+     ```
+     *(Note: Change `Code/qr-transfer` to your actual project directory path if it is placed elsewhere, e.g. `Sandbox/qr-transfer`).*
+5. Inside the **Otherwise** block, search for and drag a **Show Alert** action:
+   - Enter the message: *"Clipboard is empty! Please copy the text you want to transfer first."*
+6. **Assign a Global Hotkey**:
+   - In the right-hand sidebar under **Shortcut Details** (the icon with three sliders), click **Add Keyboard Shortcut**.
+   - Press your desired hotkey combination (e.g. `Control + Option + Command + S`).
+
+Now, pressing the hotkey will instantly check your clipboard, generate the animated QR loop, and display it in a native, easily dismissible **Quick Look** preview window!
+
+---
+
 ## 📂 Project Structure
 
 *   `build_web_app.py`: Python script that pulls CDN dependencies, patches standard `qrcode.js` minification bugs, and compiles the final single-file web app.
