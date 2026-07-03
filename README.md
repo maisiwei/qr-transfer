@@ -49,7 +49,7 @@ Double-click `install.command` in the project folder. This will:
 ## 📂 Project Structure
 
 *   `build_web_app.py`: Python script that pulls CDN dependencies, patches standard `qrcode.js` minification bugs, and compiles the final single-file web app.
-*   `index.html` / `qr-transfer.html`: The generated, fully inlined single-file Web App.
+*   `index.html`: The generated, fully inlined single-file Web App.
 *   `qr-gif-generator.m`: Objective-C source code for the native sender binary.
 *   `qr-scanner.m`: Objective-C source code for the native receiver camera scanner window.
 *   `install.command`: Double-clickable shell script to compile native tools and install Quick Actions.
