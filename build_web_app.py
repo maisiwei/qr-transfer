@@ -806,6 +806,10 @@ def main():
     }}
 
     function processDecodedText(data) {{
+        // Strip UTF-8 BOM if present (added by some QR generators/encodings)
+        if (data && data.charCodeAt(0) === 0xFEFF) {{
+            data = data.substring(1);
+        }}
         // Protocol matching: index/total:payload
         var regex = /^(\d+)\/(\d+):([\s\S]*)$/;
         var match = regex.exec(data);
