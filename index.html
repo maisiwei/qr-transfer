@@ -736,17 +736,37 @@
 
     function scanTick() {
         if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
-            canvasElement.width = videoElement.videoWidth;
-            canvasElement.height = videoElement.videoHeight;
-            canvasContext.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
-            
-            var imageData = canvasContext.getImageData(0, 0, canvasElement.width, canvasElement.height);
-            var code = jsQR(imageData.data, imageData.width, imageData.height, {
-                inversionAttempts: "dontInvert"
-            });
-            
-            if (code) {
-                processDecodedText(code.data);
+            try {
+                var width = videoElement.videoWidth;
+                var height = videoElement.videoHeight;
+                
+                // Downscale resolution for mobile CPU decoding performance (prevents browser lag)
+                var maxDim = 480;
+                if (width > maxDim || height > maxDim) {
+                    if (width > height) {
+                        height = Math.round((height * maxDim) / width);
+                        width = maxDim;
+                    } else {
+                        width = Math.round((width * maxDim) / height);
+                        height = maxDim;
+                    }
+                }
+                
+                canvasElement.width = width;
+                canvasElement.height = height;
+                canvasContext.drawImage(videoElement, 0, 0, width, height);
+                
+                var imageData = canvasContext.getImageData(0, 0, width, height);
+                var code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "attemptBoth"
+                });
+                
+                if (code) {
+                    processDecodedText(code.data);
+                }
+            } catch (err) {
+                document.getElementById('scan-status').innerText = "Scanner Error: " + err.message;
+                console.error("Scanner Error:", err);
             }
         }
         
