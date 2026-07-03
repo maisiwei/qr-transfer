@@ -643,6 +643,7 @@ def main():
     var receivedChunks = {{}};
     var totalChunks = -1;
     var scanResult = "";
+    var scanFrameCount = 0;
 
     function loadCameras() {{
         var select = document.getElementById('camera-select');
@@ -689,6 +690,7 @@ def main():
         receivedChunks = {{}};
         totalChunks = -1;
         scanResult = "";
+        scanFrameCount = 0;
         
         document.getElementById('success-box').style.display = 'none';
         document.getElementById('hud-status').style.display = 'block';
@@ -708,6 +710,7 @@ def main():
                 document.getElementById('camera-placeholder').style.display = 'none';
                 document.getElementById('scanner-hud').classList.add('active');
                 videoElement.play();
+                updateScanProgress(0, 0, "Looking for QR code...");
                 
                 // Start scan animation frame loop
                 scanAnimationId = requestAnimationFrame(scanTick);
@@ -753,6 +756,14 @@ def main():
     function scanTick() {{
         if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {{
             try {{
+                scanFrameCount++;
+                if (scanFrameCount % 6 === 0) {{
+                    var count = Object.keys(receivedChunks).length;
+                    if (count === 0) {{
+                        document.getElementById('scan-status').innerText = "Looking for QR... (frames: " + scanFrameCount + ")";
+                    }}
+                }}
+                
                 var width = videoElement.videoWidth;
                 var height = videoElement.videoHeight;
                 
@@ -778,7 +789,10 @@ def main():
                 }});
                 
                 if (code) {{
-                    processDecodedText(code.data);
+                    var matched = processDecodedText(code.data);
+                    if (!matched) {{
+                        document.getElementById('scan-status').innerText = "QR found (invalid format): " + code.data.substring(0, 15) + "...";
+                    }}
                 }}
             }} catch (err) {{
                 document.getElementById('scan-status').innerText = "Scanner Error: " + err.message;
@@ -795,7 +809,7 @@ def main():
         // Protocol matching: index/total:payload
         var regex = /^(\d+)\/(\d+):([\s\S]*)$/;
         var match = regex.exec(data);
-        if (!match) return;
+        if (!match) return false;
         
         var index = parseInt(match[1]);
         var total = parseInt(match[2]);
@@ -818,6 +832,7 @@ def main():
                 finishScanning();
             }}
         }}
+        return true;
     }}
 
     function finishScanning() {{
