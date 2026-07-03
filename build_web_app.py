@@ -13,6 +13,8 @@ def main():
     
     try:
         qrcode_js = download_lib(qrcode_js_url)
+        # Patch the minifier bug in qrcode.js where 'b' is only initialized once in the loop header
+        qrcode_js = qrcode_js.replace('for(var b=[],d=0,e=this.data.length;e>d;d++){', 'for(var b=[],d=0,e=this.data.length;e>d;d++){b=[];')
         jsqr_js = download_lib(jsqr_js_url)
     except Exception as e:
         print(f"Error downloading libraries: {e}")
@@ -591,26 +593,6 @@ def main():
         playFrames();
     }}
 
-    function toUTF8String(str) {{
-        var out, i, len, c;
-        out = "";
-        len = str.length;
-        for(i = 0; i < len; i++) {{
-            c = str.charCodeAt(i);
-            if ((c >= 0x0001) && (c <= 0x007F)) {{
-                out += str.charAt(i);
-            }} else if (c > 0x07FF) {{
-                out += String.fromCharCode(0xE0 | ((c >> 12) & 0x0F));
-                out += String.fromCharCode(0x80 | ((c >>  6) & 0x3F));
-                out += String.fromCharCode(0x80 | ((c >>  0) & 0x3F));
-            }} else {{
-                out += String.fromCharCode(0xC0 | ((c >>  6) & 0x1F));
-                out += String.fromCharCode(0x80 | ((c >>  0) & 0x3F));
-            }}
-        }}
-        return out;
-    }}
-
     function playFrames() {{
         if (sendTimer) clearInterval(sendTimer);
         
@@ -622,7 +604,7 @@ def main():
             var headerText = (currentFrameIndex + 1) + "/" + total + ":" + payload;
             
             qrGenerator.clear();
-            qrGenerator.makeCode(toUTF8String(headerText));
+            qrGenerator.makeCode(headerText);
             
             document.getElementById('frame-indicator').innerText = (currentFrameIndex + 1) + " / " + total;
             
@@ -791,7 +773,7 @@ def main():
 
     function processDecodedText(data) {{
         // Protocol matching: index/total:payload
-        var regex = /^(\\d+)\\/(\\d+):([\s\S]*)$/;
+        var regex = /^(\d+)\/(\d+):([\s\S]*)$/;
         var match = regex.exec(data);
         if (!match) return;
         
