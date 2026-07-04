@@ -1518,7 +1518,7 @@ def main():
                         statusMsg += " (" + senderFrameDuration + "ms sync)";
                         updateScanProgress(currentCount, totalChunks, statusMsg);
                     }} else {{
-                        document.getElementById('scan-status').innerText = "QR found (invalid format): " + code.data.substring(0, 15) + "...";
+                        document.getElementById('scan-status').innerText = "QR found (invalid format): '" + code.data + "' (Please hard-refresh both devices to clear cache)";
                     }}
                 }}
             }} catch (err) {{
@@ -1537,8 +1537,8 @@ def main():
         if (data && data.charCodeAt(0) === 0xFEFF) {{
             data = data.substring(1);
         }}
-        // Protocol matching: index/total/interval:payload or index/total:payload
-        var regex = /^(\d+)\/(\d+)(?:\/(\d+))?:([\s\S]*)$/;
+        // Protocol matching: index/total/interval:payload or index/total:payload (whitespace tolerant)
+        var regex = /^\s*(\d+)\/(\d+)(?:\/(\d+))?:([\s\S]*)$/;
         var match = regex.exec(data);
         if (!match) return false;
         
