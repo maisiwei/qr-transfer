@@ -489,8 +489,10 @@
             <select id="density-select" class="select-input" style="padding: 8px; border-radius: 8px;" onchange="updateDensity(this.value)">
                 <option value="low">Low Density (Big pixels - easiest to scan)</option>
                 <option value="medium" selected>Medium Density (Balanced)</option>
-                <option value="high">High Density (Smaller pixels - faster transfer)</option>
+                <option value="high">High Density (Smaller pixels)</option>
                 <option value="very-high">Very High Density (Dense pixels)</option>
+                <option value="extreme">Extreme Density (Faster - requires good camera)</option>
+                <option value="max">Maximum Density (Highest speed - requires perfect focus)</option>
             </select>
         </div>
         
@@ -514,10 +516,11 @@
                     <div id="sender-cam-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; transition: background 0.3s;"></div>
                     <span>Bi-directional Optical Feedback Link</span>
                 </div>
-                <div id="sender-camera-controls" style="display: none; margin-bottom: 5px; width: 200px;">
-                    <select id="sender-camera-select" class="select-input" style="font-size: 0.75rem; padding: 4px 8px; height: auto;" onchange="switchSenderCamera(this.value)">
+                <div id="sender-camera-controls" style="display: none; margin-bottom: 5px; width: 200px; gap: 6px;">
+                    <select id="sender-camera-select" class="select-input" style="font-size: 0.75rem; padding: 4px 8px; height: auto; flex: 1;" onchange="switchSenderCamera(this.value)">
                         <option value="">Default Camera</option>
                     </select>
+                    <button type="button" class="btn" style="padding: 4px 8px; font-size: 0.75rem; background: var(--bg-base); border: 1px solid var(--border-card);" onclick="flipSenderCamera()">Flip</button>
                 </div>
                 <div id="sender-video-container" style="position: relative; width: 200px; height: 150px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-card); background: #000; display: none;">
                     <video id="sender-video" style="width: 100%; height: 100%; object-fit: cover;" autoplay playsinline muted></video>
@@ -697,13 +700,17 @@
             low: 50,
             medium: 100,
             high: 250,
-            'very-high': 500
+            'very-high': 500,
+            extreme: 800,
+            max: 1200
         },
         file: {
             low: 300,
             medium: 600,
             high: 1000,
-            'very-high': 1500
+            'very-high': 1500,
+            extreme: 2000,
+            max: 3000
         }
     };
     var currentDensityLevel = "medium";
@@ -712,6 +719,7 @@
     // Feedback QR Sender Variables
     var senderCamStream = null;
     var senderCamIsActive = false;
+    var senderFacingMode = "user"; // "user" or "environment"
     var senderScanTimer = null;
     var lastScannedFeedback = "";
     
@@ -836,7 +844,7 @@
         var selectedCameraId = document.getElementById('sender-camera-select').value;
         var constraints = selectedCameraId ? 
             { video: { deviceId: { exact: selectedCameraId } } } : 
-            { video: true };
+            { video: { facingMode: senderFacingMode } };
         
         navigator.mediaDevices.getUserMedia(constraints)
             .then(function(stream) {
@@ -894,6 +902,39 @@
         }
     }
 
+    function flipSenderCamera() {
+        if (senderCamIsActive) {
+            senderFacingMode = (senderFacingMode === "user") ? "environment" : "user";
+            
+            // Stop current stream
+            if (senderCamStream) {
+                senderCamStream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Clear dropdown select choice since we are switching based on facingMode
+            document.getElementById('sender-camera-select').value = "";
+            
+            var constraints = {
+                video: { facingMode: senderFacingMode }
+            };
+            
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(function(stream) {
+                    senderCamStream = stream;
+                    var video = document.getElementById('sender-video');
+                    video.srcObject = stream;
+                    video.play().catch(function(e) {
+                        console.warn("Video flip play failed:", e);
+                    });
+                })
+                .catch(function(err) {
+                    console.error("Flipping camera failed", err);
+                    // Re-start default cam
+                    startSenderCam();
+                });
+        }
+    }
+
     function loadSenderCameras() {
         var select = document.getElementById('sender-camera-select');
         if (!select) return;
@@ -913,8 +954,8 @@
                         select.appendChild(option);
                     }
                 });
-                if (count > 1) {
-                    document.getElementById('sender-camera-controls').style.display = 'block';
+                if (count > 0) {
+                    document.getElementById('sender-camera-controls').style.display = 'flex';
                 }
             })
             .catch(function(err) {
