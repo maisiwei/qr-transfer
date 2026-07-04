@@ -1159,7 +1159,7 @@ def main():
                         }});
                     }} else {{
                         scanResult = "";
-                        document.getElementById('success-preview').innerText = "Binary File (" + fileMetadata.name + ")\nClick 'Download File' to save it.";
+                        document.getElementById('success-preview').innerText = "Binary File (" + fileMetadata.name + ")\\nClick 'Download File' to save it.";
                         document.getElementById('btn-copy-file-text').style.display = 'none';
                     }}
                     
