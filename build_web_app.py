@@ -386,13 +386,101 @@ def main():
             white-space: pre-wrap;
             color: var(--text-main);
         }}
+
+        /* File Mode specific styles */
+        .badge {{
+            display: inline-flex;
+            align-items: center;
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-left: 10px;
+            vertical-align: middle;
+            animation: pulse 2s infinite;
+        }}
+
+        @keyframes pulse {{
+            0% {{ opacity: 0.8; }}
+            50% {{ opacity: 1; box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }}
+            100% {{ opacity: 0.8; }}
+        }}
+
+        .drop-zone {{
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 30px 20px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.02);
+            transition: all 0.25s ease;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            min-height: 160px;
+        }}
+
+        .drop-zone.dragover {{
+            border-color: var(--accent);
+            background: rgba(14, 165, 233, 0.05);
+            box-shadow: 0 0 15px rgba(14, 165, 233, 0.15);
+        }}
+
+        .drop-icon {{
+            width: 42px;
+            height: 42px;
+            fill: rgba(255, 255, 255, 0.4);
+            transition: fill 0.25s ease;
+        }}
+
+        .drop-zone.dragover .drop-icon {{
+            fill: var(--accent);
+        }}
+
+        .drop-text {{
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.6);
+        }}
+
+        .browse-link {{
+            color: var(--accent);
+            text-decoration: underline;
+            font-weight: 500;
+        }}
+
+        .file-info-container {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+        }}
+
+        .file-name-display {{
+            font-weight: 600;
+            color: var(--text-main);
+            font-size: 0.95rem;
+            word-break: break-all;
+        }}
+
+        .file-size-display {{
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.4);
+        }}
     </style>
 </head>
 <body>
 
 <div class="container">
     <header>
-        <h1>Offline QR Transfer</h1>
+        <h1>Offline QR Transfer<span id="file-mode-badge" class="badge" style="display: none;">File Mode</span></h1>
         <p class="subtitle">Secure, fast, paged text transfer via webcam</p>
     </header>
 
@@ -403,12 +491,27 @@ def main():
 
     <!-- SEND PANEL -->
     <div id="panel-send" class="panel active">
-        <textarea id="send-input" placeholder="Type or paste your text here..." oninput="handleInput()"></textarea>
-        <div class="char-counter">
-            <span id="char-count">0 characters</span>
-            <span id="chunk-count">0 chunks (100 chars/chunk)</span>
+        <div id="text-input-container" style="width: 100%; display: flex; flex-direction: column; gap: 10px;">
+            <textarea id="send-input" placeholder="Type or paste your text here..." oninput="handleInput()"></textarea>
+            <div class="char-counter">
+                <span id="char-count">0 characters</span>
+                <span id="chunk-count">0 chunks (100 chars/chunk)</span>
+            </div>
+            <button id="btn-start-send" class="btn" onclick="startSending()">Generate QR Loop</button>
         </div>
-        <button id="btn-start-send" class="btn" onclick="startSending()">Generate QR Loop</button>
+        
+        <div id="file-input-container" style="display: none; width: 100%;">
+            <div id="drop-zone" class="drop-zone" onclick="triggerFileBrowse()">
+                <svg class="drop-icon" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+                <p id="drop-text">Drag & drop your file here, or <span class="browse-link">browse</span></p>
+                <div id="file-info" class="file-info-container" style="display: none;">
+                    <span id="file-name-display" class="file-name-display"></span>
+                    <span id="file-size-display" class="file-size-display"></span>
+                    <button type="button" id="btn-remove-file" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; margin-top: 5px;" onclick="removeFile(event)">Remove File</button>
+                </div>
+                <input type="file" id="file-loader" style="display: none;" onchange="handleFileSelect(this)">
+            </div>
+        </div>
         
         <div class="qr-display-container">
             <div id="qr-wrapper" class="qr-wrapper">
@@ -469,7 +572,19 @@ def main():
                 Received Successfully!
             </div>
             <div id="success-preview" class="success-preview"></div>
-            <button class="btn" style="background: var(--bg-base); border: 1px solid var(--border-card);" onclick="copyResult()">Copy to Clipboard</button>
+            
+            <button id="btn-copy-text-default" class="btn" style="background: var(--bg-base); border: 1px solid var(--border-card);" onclick="copyResult()">Copy to Clipboard</button>
+            
+            <div id="success-file-box" style="display: none; margin-top: 10px; flex-direction: column; gap: 8px; width: 100%;">
+                <div style="font-size: 0.85rem; color: var(--text-muted); background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 8px; text-align: left;">
+                    <div style="font-weight: 600; color: var(--text-main); word-break: break-all;" id="received-file-name"></div>
+                    <div style="font-size: 0.75rem; margin-top: 2px;" id="received-file-size"></div>
+                </div>
+                <div style="display: flex; gap: 8px; width: 100%;">
+                    <button id="btn-download-file" class="btn" style="flex: 1;" onclick="downloadReceivedFile()">Download File</button>
+                    <button id="btn-copy-file-text" class="btn" style="flex: 1; background: var(--bg-base); border: 1px solid var(--border-card);" onclick="copyResult()">Copy Text</button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -555,6 +670,11 @@ def main():
     var sendTimer = null;
     var isSendingPlaying = true;
     var frameDuration = 250;
+    
+    // File upload state variables
+    var selectedFile = null;
+    var fileBase64 = "";
+    var chunkSize = 100; // Will be set to 800 in file mode
 
     function handleInput() {{
         var text = document.getElementById('send-input').value;
@@ -574,8 +694,7 @@ def main():
         // Stop any current animation
         if (sendTimer) clearInterval(sendTimer);
         
-        // Chunk
-        var chunkSize = 100;
+        // Chunk (uses the outer chunkSize value)
         qrChunks = [];
         for (var i = 0; i < text.length; i += chunkSize) {{
             qrChunks.push(text.substring(i, i + chunkSize));
@@ -643,6 +762,132 @@ def main():
         }}
     }}
 
+    // --- FILE TRANSFER SENDER HELPERS ---
+    function triggerFileBrowse() {{
+        document.getElementById('file-loader').click();
+    }}
+
+    function handleFileSelect(input) {{
+        var file = input.files[0];
+        if (file) {{
+            processSelectedFile(file);
+        }}
+    }}
+
+    function processSelectedFile(file) {{
+        selectedFile = file;
+        
+        // Hide standard prompt text, show file metadata details
+        document.getElementById('drop-text').style.display = 'none';
+        document.getElementById('file-name-display').innerText = file.name;
+        document.getElementById('file-size-display').innerText = formatSize(file.size);
+        document.getElementById('file-info').style.display = 'flex';
+        
+        // Read file as Data URL (for Base64 payload)
+        var reader = new FileReader();
+        reader.onload = function(e) {{
+            var dataUrl = e.target.result;
+            var commaIdx = dataUrl.indexOf(',');
+            fileBase64 = dataUrl.substring(commaIdx + 1);
+            
+            var mimeType = "application/octet-stream";
+            var colonIdx = dataUrl.indexOf(':');
+            var semiIdx = dataUrl.indexOf(';');
+            if (colonIdx !== -1 && semiIdx !== -1) {{
+                mimeType = dataUrl.substring(colonIdx + 1, semiIdx);
+            }}
+            
+            // Read array buffer to calculate SHA-256
+            var arrayBufReader = new FileReader();
+            arrayBufReader.onload = function(evt) {{
+                var arrayBuffer = evt.target.result;
+                crypto.subtle.digest("SHA-256", arrayBuffer)
+                    .then(function(hashBuffer) {{
+                        var hashArray = Array.from(new Uint8Array(hashBuffer));
+                        var hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                        setupFileChunks(file.name, mimeType, hashHex, file.size);
+                    }})
+                    .catch(function(err) {{
+                        console.error("SHA-256 generation failed, using fallback", err);
+                        var fallbackHash = "sha256-fallback-" + file.size + "-" + Date.now();
+                        setupFileChunks(file.name, mimeType, fallbackHash, file.size);
+                    }});
+            }};
+            arrayBufReader.readAsArrayBuffer(file);
+        }};
+        reader.readAsDataURL(file);
+    }}
+
+    function removeFile(event) {{
+        if (event) event.stopPropagation(); // Avoid triggering file browse handler on click
+        
+        selectedFile = null;
+        fileBase64 = "";
+        
+        // Stop any sending loops and clear the QR view
+        if (sendTimer) clearInterval(sendTimer);
+        qrChunks = [];
+        var qrContainer = document.getElementById("qrcode");
+        qrContainer.innerHTML = '';
+        document.getElementById('qr-wrapper').style.display = 'none';
+        document.getElementById('qr-controls').style.display = 'none';
+        document.getElementById('speed-control').style.display = 'none';
+        
+        // Reset file uploader input values
+        document.getElementById('file-loader').value = "";
+        
+        // Reset Drop Zone visuals
+        document.getElementById('file-info').style.display = 'none';
+        document.getElementById('drop-text').style.display = 'block';
+    }}
+
+    function setupFileChunks(filename, mimeType, sha256, size) {{
+        // Clean filename of semicolons to prevent protocol parsing errors
+        var cleanName = filename.replace(/;/g, "_");
+        
+        // Total data chunks (800 chars per frame in file mode)
+        var totalDataChunks = Math.ceil(fileBase64.length / 800);
+        var total = totalDataChunks + 1; // +1 for Manifest Frame at index 0
+        
+        qrChunks = [];
+        // Frame 0: Manifest Frame
+        qrChunks.push("0/" + total + ":" + cleanName + ";" + mimeType + ";" + sha256 + ";" + size);
+        
+        // Frame 1 to N: Base64 data chunks
+        for (var i = 0; i < totalDataChunks; i++) {{
+            var start = i * 800;
+            var end = start + 800;
+            var chunkData = fileBase64.substring(start, end);
+            qrChunks.push((i + 1) + "/" + total + ":" + chunkData);
+        }}
+        
+        // Show controls and immediately start playing the loop!
+        document.getElementById('qr-wrapper').style.display = 'flex';
+        document.getElementById('qr-controls').style.display = 'flex';
+        document.getElementById('speed-control').style.display = 'flex';
+        
+        var qrContainer = document.getElementById("qrcode");
+        qrContainer.innerHTML = ''; // Clear
+        qrGenerator = new QRCode(qrContainer, {{
+            text: "1/1:Init",
+            width: 218,
+            height: 218,
+            correctLevel: QRCode.CorrectLevel.L
+        }});
+        
+        currentFrameIndex = 0;
+        isSendingPlaying = true;
+        playFrames();
+    }}
+
+    function formatSize(bytes) {{
+        if (bytes === 0) return '0 Bytes';
+        var k = 1024;
+        var sizes = ['Bytes', 'KB', 'MB'];
+        var i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }}
+
     // --- RECEIVER SECTION ---
     var videoElement = document.getElementById('webcam-video');
     var canvasElement = document.createElement('canvas');
@@ -654,6 +899,8 @@ def main():
     var totalChunks = -1;
     var scanResult = "";
     var scanFrameCount = 0;
+    var fileMetadata = null; // Stores parsed manifest frame details
+    var receivedBlob = null;   // Stores decoded binary file Blob
 
     function loadCameras() {{
         var select = document.getElementById('camera-select');
@@ -701,6 +948,8 @@ def main():
         totalChunks = -1;
         scanResult = "";
         scanFrameCount = 0;
+        fileMetadata = null;
+        receivedBlob = null;
         
         document.getElementById('success-box').style.display = 'none';
         document.getElementById('hud-status').style.display = 'block';
@@ -832,15 +1081,31 @@ def main():
         if (totalChunks !== -1 && totalChunks !== total) {{
             // Reset if chunk total changes (scanning a new code)
             receivedChunks = {{}};
+            fileMetadata = null;
+            receivedBlob = null;
         }}
         totalChunks = total;
+        
+        if (index === 0) {{
+            // Manifest frame! Format: filename;mimeType;sha256;size
+            var parts = payload.split(';');
+            if (parts.length >= 4) {{
+                fileMetadata = {{
+                    name: parts[0],
+                    mime: parts[1],
+                    hash: parts[2],
+                    size: parseInt(parts[3])
+                }};
+            }}
+        }}
         
         if (!receivedChunks[index]) {{
             receivedChunks[index] = payload;
             playSound('tick');
             
             var count = Object.keys(receivedChunks).length;
-            updateScanProgress(count, total, "Scanning chunks...");
+            var statusText = fileMetadata ? "Receiving file: " + fileMetadata.name : "Scanning chunks...";
+            updateScanProgress(count, total, statusText);
             
             if (count === total) {{
                 finishScanning();
@@ -853,29 +1118,97 @@ def main():
         stopScanner();
         playSound('success');
         
-        // Assemble text
-        var fullText = "";
-        for (var i = 1; i <= totalChunks; i++) {{
-            if (receivedChunks[i]) {{
-                fullText += receivedChunks[i];
-            }}
-        }}
-        
-        scanResult = fullText;
-        
-        // Update UI
         document.getElementById('hud-status').style.display = 'none';
         document.getElementById('success-box').style.display = 'flex';
-        document.getElementById('success-preview').innerText = fullText;
         
-        // Attempt auto clipboard copy (might require user interaction on iOS)
-        navigator.clipboard.writeText(fullText)
-            .then(function() {{
-                document.getElementById('scan-status').innerText = "Copied to clipboard!";
-            }})
-            .catch(function(e) {{
-                console.warn("Clipboard auto-copy blocked by iOS security, click copy manually.", e);
-            }});
+        if (fileMetadata) {{
+            // File Mode Reassembly
+            var fullBase64 = "";
+            for (var i = 1; i < totalChunks; i++) {{
+                if (receivedChunks[i]) {{
+                    fullBase64 += receivedChunks[i];
+                }}
+            }}
+            
+            // Asynchronously convert Base64 to Blob using browser's native data URI parser
+            fetch("data:" + fileMetadata.mime + ";base64," + fullBase64)
+                .then(r => r.blob())
+                .then(blob => {{
+                    receivedBlob = blob;
+                    
+                    // Display file metadata card
+                    document.getElementById('received-file-name').innerText = fileMetadata.name;
+                    document.getElementById('received-file-size').innerText = formatSize(fileMetadata.size);
+                    document.getElementById('success-file-box').style.display = 'flex';
+                    document.getElementById('btn-copy-text-default').style.display = 'none';
+                    
+                    // If file is text-based, allow text copying/preview
+                    var isText = fileMetadata.mime.startsWith('text/') || 
+                                 fileMetadata.mime === 'application/json' || 
+                                 fileMetadata.name.endsWith('.js') || 
+                                 fileMetadata.name.endsWith('.py') ||
+                                 fileMetadata.name.endsWith('.pem') ||
+                                 fileMetadata.name.endsWith('.yml') ||
+                                 fileMetadata.name.endsWith('.yaml');
+                                 
+                    if (isText) {{
+                        blob.text().then(text => {{
+                            scanResult = text;
+                            document.getElementById('success-preview').innerText = text;
+                            document.getElementById('btn-copy-file-text').style.display = 'block';
+                        }});
+                    }} else {{
+                        scanResult = "";
+                        document.getElementById('success-preview').innerText = "Binary File (" + fileMetadata.name + ")\nClick 'Download File' to save it.";
+                        document.getElementById('btn-copy-file-text').style.display = 'none';
+                    }}
+                    
+                    document.getElementById('scan-status').innerText = "File transfer completed!";
+                }})
+                .catch(err => {{
+                    console.error("File reassembly error", err);
+                    document.getElementById('scan-status').innerText = "Error reassembling file: " + err.message;
+                }});
+        }} else {{
+            // Text Mode Assembly
+            var fullText = "";
+            for (var i = 1; i <= totalChunks; i++) {{
+                if (receivedChunks[i]) {{
+                    fullText += receivedChunks[i];
+                }}
+            }}
+            
+            scanResult = fullText;
+            document.getElementById('success-preview').innerText = fullText;
+            document.getElementById('success-file-box').style.display = 'none';
+            document.getElementById('btn-copy-text-default').style.display = 'block';
+            
+            // Attempt auto clipboard copy (might require user interaction on iOS)
+            navigator.clipboard.writeText(fullText)
+                .then(function() {{
+                    document.getElementById('scan-status').innerText = "Copied to clipboard!";
+                }})
+                .catch(function(e) {{
+                    console.warn("Clipboard auto-copy blocked by iOS security, click copy manually.", e);
+                }});
+        }}
+    }}
+
+    function downloadReceivedFile() {{
+        if (!receivedBlob || !fileMetadata) return;
+        
+        var url = URL.createObjectURL(receivedBlob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = fileMetadata.name;
+        document.body.appendChild(a);
+        a.click();
+        
+        // Cleanup
+        document.body.removeChild(a);
+        setTimeout(() => {{
+            URL.revokeObjectURL(url);
+        }}, 100);
     }}
 
     function copyResult() {{
@@ -886,6 +1219,46 @@ def main():
             .catch(function(err) {{
                 alert("Failed to copy: " + err);
             }});
+    }}
+
+    // Check URL parameters for file mode activation
+    var urlParams = new URLSearchParams(window.location.search);
+    var isFileMode = urlParams.get("mode") === "file";
+    
+    if (isFileMode) {{
+        chunkSize = 800; // Update the dynamic chunk size
+        document.getElementById('text-input-container').style.display = 'none';
+        document.getElementById('file-input-container').style.display = 'block';
+        document.getElementById('file-mode-badge').style.display = 'inline-flex';
+        document.getElementById('chunk-count').innerText = '0 chunks (800 chars/chunk)';
+    }}
+
+    // Setup drag and drop event listeners
+    var dropZone = document.getElementById('drop-zone');
+    if (dropZone) {{
+        ['dragenter', 'dragover'].forEach(eventName => {{
+            dropZone.addEventListener(eventName, (e) => {{
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.add('dragover');
+            }}, false);
+        }});
+
+        ['dragleave', 'drop'].forEach(eventName => {{
+            dropZone.addEventListener(eventName, (e) => {{
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.remove('dragover');
+            }}, false);
+        }});
+
+        dropZone.addEventListener('drop', (e) => {{
+            var dt = e.dataTransfer;
+            var file = dt.files[0];
+            if (file) {{
+                processSelectedFile(file);
+            }}
+        }}, false);
     }}
 </script>
 
