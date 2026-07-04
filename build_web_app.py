@@ -700,9 +700,10 @@ def main():
     
     function toggleSenderAcoustic(enabled) {{
         isSenderAcousticEnabled = enabled;
-        if (!enabled) {{
+        if (enabled) {{
+            startSenderListening();
+        }} else {{
             stopSenderListening();
-            if (ackTimeout) clearTimeout(ackTimeout);
             isWaitingForAck = false;
         }}
     }}
@@ -841,6 +842,11 @@ def main():
             }})
             .catch(function(err) {{
                 console.error("Microphone access failed", err);
+                alert("Microphone access failed. Please allow microphone permission in your browser address bar to use Acoustic Sync.");
+                document.getElementById('sender-acoustic-toggle').checked = false;
+                isSenderAcousticEnabled = false;
+                isWaitingForAck = false;
+                stopSenderListening();
             }});
     }}
 
@@ -1294,7 +1300,8 @@ def main():
             }}
         }}
         
-        if (!receivedChunks[index]) {{
+        var isNew = !receivedChunks[index];
+        if (isNew) {{
             receivedChunks[index] = payload;
             
             // Suppress repeating tick sounds if Acoustic Handshake is enabled
@@ -1308,42 +1315,44 @@ def main():
             
             if (count === total) {{
                 finishScanning();
-            }} else if (isReceiverAcousticEnabled) {{
-                // Align 0-based (File) and 1-based (Text) indices for sync range calculation
-                var zeroBasedIndex = fileMetadata ? index : index - 1;
-                
-                // Check if the MacBook rewound/retried the loop
-                if (zeroBasedIndex < lastScannedIndex) {{
-                    lastAckedBatch = Math.floor(zeroBasedIndex / batchSize) - 1;
+                return true;
+            }}
+        }}
+        
+        // Check for Acoustic Sync chimes for every successfully scanned frame (new or repeated)
+        if (isReceiverAcousticEnabled && Object.keys(receivedChunks).length < total) {{
+            var zeroBasedIndex = fileMetadata ? index : index - 1;
+            
+            // If sender rewound/retried, reset the ACK index state
+            if (zeroBasedIndex < lastScannedIndex) {{
+                lastAckedBatch = Math.floor(zeroBasedIndex / batchSize) - 1;
+            }}
+            lastScannedIndex = zeroBasedIndex;
+            
+            var batchNum = Math.floor(zeroBasedIndex / batchSize);
+            var batchStartZero = batchNum * batchSize;
+            var batchEndZero = Math.min(batchStartZero + batchSize, total);
+            
+            // Verify if we have collected all frames in the current range
+            var hasAllCurrentBatch = true;
+            for (var k = batchStartZero; k < batchEndZero; k++) {{
+                var actualKey = fileMetadata ? k : k + 1;
+                if (!receivedChunks[actualKey]) {{
+                    hasAllCurrentBatch = false;
+                    break;
                 }}
-                lastScannedIndex = zeroBasedIndex;
-                
-                // Determine boundaries of the current batch
-                var batchNum = Math.floor(zeroBasedIndex / batchSize);
-                var batchStartZero = batchNum * batchSize;
-                var batchEndZero = Math.min(batchStartZero + batchSize, total);
-                
-                // Verify if we have collected all frames in the current range
-                var hasAllCurrentBatch = true;
-                for (var k = batchStartZero; k < batchEndZero; k++) {{
-                    var actualKey = fileMetadata ? k : k + 1;
-                    if (!receivedChunks[actualKey]) {{
-                        hasAllCurrentBatch = false;
-                        break;
-                    }}
-                }}
-                
-                if (hasAllCurrentBatch) {{
-                    var now = Date.now();
-                    if (batchNum > lastAckedBatch) {{
-                        playAcousticAck();
-                        lastAckedBatch = batchNum;
-                        lastAckTime = now;
-                    }} else if (batchNum === lastAckedBatch && (now - lastAckTime > 2500)) {{
-                        // MacBook missed the previous chime; re-emit ACK
-                        playAcousticAck();
-                        lastAckTime = now;
-                    }}
+            }}
+            
+            if (hasAllCurrentBatch) {{
+                var now = Date.now();
+                if (batchNum > lastAckedBatch) {{
+                    playAcousticAck();
+                    lastAckedBatch = batchNum;
+                    lastAckTime = now;
+                }} else if (batchNum === lastAckedBatch && (now - lastAckTime > 2500)) {{
+                    // Missed tone: re-emit chime every 2.5 seconds
+                    playAcousticAck();
+                    lastAckTime = now;
                 }}
             }}
         }}
