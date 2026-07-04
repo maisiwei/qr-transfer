@@ -528,6 +528,11 @@ def main():
                 <button class="btn" style="padding: 8px 16px;" onclick="togglePlay()">Play/Pause</button>
                 <span id="frame-indicator" style="font-size: 0.85rem; color: var(--text-muted)">0 / 0</span>
             </div>
+            
+            <div style="margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.85rem; color: var(--text-muted);">
+                <input type="checkbox" id="sender-acoustic-toggle" onchange="toggleSenderAcoustic(this.checked)" style="cursor: pointer;">
+                <label for="sender-acoustic-toggle" style="cursor: pointer; user-select: none;">Acoustic Sync Loop (Beta)</label>
+            </div>
         </div>
     </div>
 
@@ -553,6 +558,11 @@ def main():
         </div>
 
         <button id="btn-start-scan" class="btn" onclick="toggleScanner()">Start Scanner</button>
+        
+        <div style="margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.85rem; color: var(--text-muted);">
+            <input type="checkbox" id="receiver-acoustic-toggle" onchange="toggleReceiverAcoustic(this.checked)" style="cursor: pointer;">
+            <label for="receiver-acoustic-toggle" style="cursor: pointer; user-select: none;">Acoustic Sync Handshake (Beta)</label>
+        </div>
 
         <div id="hud-status" class="hud-status-card" style="display: none;">
             <div style="display: flex; justify-content: space-between; font-weight: 600;">
@@ -676,6 +686,26 @@ def main():
     var selectedFile = null;
     var fileBase64 = "";
     var chunkSize = 100; // Will be set to 800 in file mode
+    
+    // Acoustic Sync Sender Variables
+    var isSenderAcousticEnabled = false;
+    var currentBatchIndex = 0;
+    var batchSize = 25;
+    var isWaitingForAck = false;
+    var ackTimeout = null;
+    var senderAudioCtx = null;
+    var senderAnalyser = null;
+    var senderMicStream = null;
+    var senderIsListening = false;
+    
+    function toggleSenderAcoustic(enabled) {{
+        isSenderAcousticEnabled = enabled;
+        if (!enabled) {{
+            stopSenderListening();
+            if (ackTimeout) clearTimeout(ackTimeout);
+            isWaitingForAck = false;
+        }}
+    }}
 
     function handleInput() {{
         var text = document.getElementById('send-input').value;
@@ -733,8 +763,22 @@ def main():
         
         function tickFrame() {{
             if (qrChunks.length === 0) return;
+            if (isWaitingForAck) return; // Wait until acoustic ACK clears or times out
             
             var total = qrChunks.length;
+            
+            // Calculate batch range boundaries
+            var batchStart = 0;
+            var batchEnd = total;
+            if (isSenderAcousticEnabled) {{
+                batchStart = currentBatchIndex * batchSize;
+                batchEnd = Math.min(batchStart + batchSize, total);
+                
+                if (currentFrameIndex < batchStart || currentFrameIndex >= batchEnd) {{
+                    currentFrameIndex = batchStart;
+                }}
+            }}
+            
             var payload = qrChunks[currentFrameIndex];
             var headerText = (currentFrameIndex + 1) + "/" + total + ":" + payload;
             
@@ -743,11 +787,102 @@ def main():
             
             document.getElementById('frame-indicator').innerText = (currentFrameIndex + 1) + " / " + total;
             
-            currentFrameIndex = (currentFrameIndex + 1) % total;
+            if (isSenderAcousticEnabled) {{
+                var nextIdx = currentFrameIndex + 1;
+                if (nextIdx >= batchEnd) {{
+                    // Pause on the final frame of this batch and wait for ACK
+                    currentFrameIndex = batchEnd - 1;
+                    isWaitingForAck = true;
+                    startSenderListening();
+                    
+                    if (ackTimeout) clearTimeout(ackTimeout);
+                    ackTimeout = setTimeout(onSenderAckTimeout, 3500);
+                }} else {{
+                    currentFrameIndex = nextIdx;
+                }}
+            }} else {{
+                currentFrameIndex = (currentFrameIndex + 1) % total;
+            }}
         }}
         
         tickFrame(); // Render first frame instantly
         sendTimer = setInterval(tickFrame, frameDuration);
+    }}
+
+    function onSenderAckTimeout() {{
+        if (!isWaitingForAck) return;
+        isWaitingForAck = false;
+        stopSenderListening();
+        console.log("Acoustic ACK timeout. Replaying current batch.");
+        
+        // Reset to start of current batch
+        currentFrameIndex = currentBatchIndex * batchSize;
+    }}
+
+    function startSenderListening() {{
+        if (senderIsListening) return;
+        
+        if (!senderAudioCtx) {{
+            senderAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            senderAnalyser = senderAudioCtx.createAnalyser();
+            senderAnalyser.fftSize = 2048;
+        }}
+        if (senderAudioCtx.state === 'suspended') {{
+            senderAudioCtx.resume();
+        }}
+        
+        document.getElementById('frame-indicator').innerText = "Waiting for audio ACK...";
+        
+        navigator.mediaDevices.getUserMedia({{ audio: true }})
+            .then(function(stream) {{
+                senderMicStream = stream;
+                var source = senderAudioCtx.createMediaStreamSource(stream);
+                source.connect(senderAnalyser);
+                senderIsListening = true;
+                detectAckTone();
+            }})
+            .catch(function(err) {{
+                console.error("Microphone access failed", err);
+                // Fallback: auto-advance on timeout if microphone is blocked
+            }});
+    }}
+
+    function stopSenderListening() {{
+        senderIsListening = false;
+        if (senderMicStream) {{
+            senderMicStream.getTracks().forEach(track => track.stop());
+            senderMicStream = null;
+        }}
+    }}
+
+    function detectAckTone() {{
+        if (!senderIsListening) return;
+        
+        var dataArray = new Uint8Array(senderAnalyser.frequencyBinCount);
+        senderAnalyser.getByteFrequencyData(dataArray);
+        
+        var binIndex = Math.round(18500 / (senderAudioCtx.sampleRate / 2048));
+        var amplitude = dataArray[binIndex];
+        var neighborAmp1 = dataArray[binIndex - 1] || 0;
+        var neighborAmp2 = dataArray[binIndex + 1] || 0;
+        var peak = Math.max(amplitude, neighborAmp1, neighborAmp2);
+        
+        if (peak > 180) {{ // Clear tone threshold
+            console.log("Acoustic ACK received successfully!");
+            isWaitingForAck = false;
+            stopSenderListening();
+            if (ackTimeout) clearTimeout(ackTimeout);
+            
+            currentBatchIndex++;
+            var totalBatches = Math.ceil(qrChunks.length / batchSize);
+            if (currentBatchIndex >= totalBatches) {{
+                currentBatchIndex = 0; // Loop completed
+            }}
+            currentFrameIndex = currentBatchIndex * batchSize;
+            playFrames();
+        }} else {{
+            requestAnimationFrame(detectAckTone);
+        }}
     }}
 
     function togglePlay() {{
@@ -907,6 +1042,19 @@ def main():
     var scanFrameCount = 0;
     var fileMetadata = null; // Stores parsed manifest frame details
     var receivedBlob = null;   // Stores decoded binary file Blob
+    
+    // Acoustic Sync Receiver Variables
+    var isReceiverAcousticEnabled = false;
+    var receiverAudioCtx = null;
+    var lastAckedBatch = -1;
+    var lastScannedIndex = -1;
+    
+    function toggleReceiverAcoustic(enabled) {{
+        isReceiverAcousticEnabled = enabled;
+        if (enabled && !receiverAudioCtx) {{
+            receiverAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }}
+    }}
 
     function loadCameras() {{
         var select = document.getElementById('camera-select');
@@ -956,6 +1104,8 @@ def main():
         scanFrameCount = 0;
         fileMetadata = null;
         receivedBlob = null;
+        lastAckedBatch = -1;
+        lastScannedIndex = -1;
         
         document.getElementById('success-box').style.display = 'none';
         document.getElementById('hud-status').style.display = 'block';
@@ -1115,6 +1265,33 @@ def main():
             
             if (count === total) {{
                 finishScanning();
+            }} else if (isReceiverAcousticEnabled) {{
+                // Check if we rewound due to retry
+                if (index < lastScannedIndex) {{
+                    lastAckedBatch = Math.floor(index / batchSize) - 1;
+                }}
+                lastScannedIndex = index;
+                
+                // Determine boundaries of current batch
+                var batchStart = Math.floor(index / batchSize) * batchSize;
+                var batchEnd = Math.min(batchStart + batchSize, total);
+                
+                // Verify if we have collected all frames in the current range
+                var hasAllCurrentBatch = true;
+                for (var k = batchStart; k < batchEnd; k++) {{
+                    if (!receivedChunks[k]) {{
+                        hasAllCurrentBatch = false;
+                        break;
+                    }}
+                }}
+                
+                if (hasAllCurrentBatch) {{
+                    var batchNum = Math.floor(index / batchSize);
+                    if (batchNum > lastAckedBatch) {{
+                        playAcousticAck();
+                        lastAckedBatch = batchNum;
+                    }}
+                }}
             }}
         }}
         return true;
@@ -1225,6 +1402,30 @@ def main():
             .catch(function(err) {{
                 alert("Failed to copy: " + err);
             }});
+    }}
+
+    function playAcousticAck() {{
+        if (!receiverAudioCtx) {{
+            receiverAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }}
+        if (receiverAudioCtx.state === 'suspended') {{
+            receiverAudioCtx.resume();
+        }}
+        console.log("Emitting 18.5 kHz ACK tone");
+        
+        var osc = receiverAudioCtx.createOscillator();
+        var gainNode = receiverAudioCtx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(18500, receiverAudioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.5, receiverAudioCtx.currentTime);
+        
+        osc.connect(gainNode);
+        gainNode.connect(receiverAudioCtx.destination);
+        
+        osc.start();
+        gainNode.gain.exponentialRampToValueAtTime(0.001, receiverAudioCtx.currentTime + 0.5);
+        osc.stop(receiverAudioCtx.currentTime + 0.5);
     }}
 
     function enableFileMode() {{
