@@ -534,6 +534,11 @@ def main():
                     <div id="sender-cam-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; transition: background 0.3s;"></div>
                     <span>Bi-directional Optical Feedback Link</span>
                 </div>
+                <div id="sender-camera-controls" style="display: none; margin-bottom: 5px; width: 200px;">
+                    <select id="sender-camera-select" class="select-input" style="font-size: 0.75rem; padding: 4px 8px; height: auto;" onchange="switchSenderCamera(this.value)">
+                        <option value="">Default Camera</option>
+                    </select>
+                </div>
                 <div id="sender-video-container" style="position: relative; width: 200px; height: 150px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-card); background: #000; display: none;">
                     <video id="sender-video" style="width: 100%; height: 100%; object-fit: cover;" autoplay playsinline muted></video>
                     <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; box-shadow: inset 0 0 15px rgba(16, 185, 129, 0.4); pointer-events: none; border: 2px solid #10b981; border-radius: 8px; box-sizing: border-box; transition: all 0.3s;" id="sender-video-border"></div>
@@ -824,9 +829,18 @@ def main():
             return;
         }}
         
-        navigator.mediaDevices.getUserMedia({{ video: {{ width: 320, height: 240 }} }})
+        var selectedCameraId = document.getElementById('sender-camera-select').value;
+        var constraints = selectedCameraId ? 
+            {{ video: {{ deviceId: {{ exact: selectedCameraId }} }} }} : 
+            {{ video: true }};
+        
+        navigator.mediaDevices.getUserMedia(constraints)
             .then(function(stream) {{
                 senderCamStream = stream;
+                
+                // Show container BEFORE calling play() to prevent browser rendering/power saving block!
+                document.getElementById('sender-video-container').style.display = 'block';
+                
                 var video = document.getElementById('sender-video');
                 video.setAttribute("playsinline", true);
                 video.srcObject = stream;
@@ -834,10 +848,12 @@ def main():
                     console.warn("Video play failed, browser policy might require click:", e);
                 }});
                 
-                document.getElementById('sender-video-container').style.display = 'block';
                 document.getElementById('btn-toggle-sender-cam').innerText = "Disable Feedback Camera";
                 document.getElementById('sender-cam-status-dot').style.background = "#10b981";
                 senderCamIsActive = true;
+                
+                // Load device lists for switching
+                loadSenderCameras();
                 
                 // Start scan animation loop
                 senderScanTimer = setInterval(scanSenderFrame, 300);
@@ -845,6 +861,59 @@ def main():
             .catch(function(err) {{
                 console.error("Feedback webcam access failed", err);
                 alert("Failed to access camera: " + err.message);
+            }});
+    }}
+
+    function switchSenderCamera(deviceId) {{
+        if (senderCamIsActive) {{
+            if (senderCamStream) {{
+                senderCamStream.getTracks().forEach(track => track.stop());
+            }}
+            
+            var constraints = deviceId ? 
+                {{ video: {{ deviceId: {{ exact: deviceId }} }} }} : 
+                {{ video: true }};
+            
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(function(stream) {{
+                    senderCamStream = stream;
+                    var video = document.getElementById('sender-video');
+                    video.srcObject = stream;
+                    video.play().catch(function(e) {{
+                        console.warn("Video switch play failed:", e);
+                    }});
+                }})
+                .catch(function(err) {{
+                    console.error("Switching camera failed", err);
+                }});
+        }}
+    }}
+
+    function loadSenderCameras() {{
+        var select = document.getElementById('sender-camera-select');
+        if (!select) return;
+        
+        select.innerHTML = '<option value="">Default Camera</option>';
+        
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+        
+        navigator.mediaDevices.enumerateDevices()
+            .then(function(devices) {{
+                var count = 0;
+                devices.forEach(function(device) {{
+                    if (device.kind === 'videoinput') {{
+                        var option = document.createElement('option');
+                        option.value = device.deviceId;
+                        option.text = device.label || 'Camera ' + (++count);
+                        select.appendChild(option);
+                    }}
+                }});
+                if (count > 1) {{
+                    document.getElementById('sender-camera-controls').style.display = 'block';
+                }}
+            }})
+            .catch(function(err) {{
+                console.warn("enumerateDevices failed for sender", err);
             }});
     }}
 
@@ -859,6 +928,7 @@ def main():
             senderCamStream = null;
         }}
         document.getElementById('sender-video-container').style.display = 'none';
+        document.getElementById('sender-camera-controls').style.display = 'none';
         document.getElementById('btn-toggle-sender-cam').innerText = "Enable Feedback Camera";
         document.getElementById('sender-cam-status-dot').style.background = "#94a3b8";
     }}
