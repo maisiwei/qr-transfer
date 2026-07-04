@@ -540,7 +540,7 @@
         
         <!-- Feedback QR Code Display -->
         <div id="receiver-feedback-card" style="display: none; flex-direction: column; align-items: center; gap: 10px; margin-top: 15px; padding: 15px; background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-card); width: 100%; box-sizing: border-box;">
-            <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">Point this code at MacBook's webcam</div>
+            <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">Point this code at the sender's camera</div>
             <div id="feedback-qrcode" style="background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: inline-block;"></div>
             <div style="font-size: 0.75rem; color: var(--text-muted);" id="feedback-desc">Requesting missing chunks...</div>
             <button class="btn" style="padding: 6px 12px; font-size: 0.8rem; background: var(--theme-color); color: #000; font-weight: 600; width: 100%;" onclick="resumeReceiverScanning()">Resume Scanning</button>
@@ -1430,9 +1430,6 @@
         document.getElementById('hud-status').style.display = 'none';
         document.getElementById('success-box').style.display = 'flex';
         
-        // Render FB:COMPLETE feedback code so the MacBook can confirm success
-        showCompleteFeedbackQR();
-        
         if (fileMetadata) {
             // File Mode Reassembly
             var fullBase64 = "";
@@ -1551,48 +1548,25 @@
             }
         }
         
-        var payload = "FB:COMPLETE";
         if (missingArray.length > 0) {
             var compressed = compressMissingIndices(missingArray);
-            payload = "FB:" + compressed;
+            var payload = "FB:" + compressed;
             document.getElementById('feedback-desc').innerText = "Requesting " + missingArray.length + " missing chunks.";
-        } else {
-            document.getElementById('feedback-desc').innerText = "Transfer Complete! Show this to MacBook camera.";
+            
+            if (!feedbackQrGenerator) {
+                feedbackQrGenerator = new QRCode(document.getElementById("feedback-qrcode"), {
+                    text: "Init",
+                    width: 140,
+                    height: 140,
+                    correctLevel: QRCode.CorrectLevel.L
+                });
+            }
+            feedbackQrGenerator.clear();
+            feedbackQrGenerator.makeCode(payload);
+            
+            document.getElementById('hud-status').style.display = 'none';
+            document.getElementById('receiver-feedback-card').style.display = 'flex';
         }
-        
-        var hasMissing = (missingArray.length > 0);
-        document.querySelector('#receiver-feedback-card button').style.display = hasMissing ? 'block' : 'none';
-        
-        if (!feedbackQrGenerator) {
-            feedbackQrGenerator = new QRCode(document.getElementById("feedback-qrcode"), {
-                text: "Init",
-                width: 140,
-                height: 140,
-                correctLevel: QRCode.CorrectLevel.L
-            });
-        }
-        feedbackQrGenerator.clear();
-        feedbackQrGenerator.makeCode(payload);
-        
-        document.getElementById('hud-status').style.display = 'none';
-        document.getElementById('receiver-feedback-card').style.display = 'flex';
-    }
-
-    function showCompleteFeedbackQR() {
-        if (!feedbackQrGenerator) {
-            feedbackQrGenerator = new QRCode(document.getElementById("feedback-qrcode"), {
-                text: "Init",
-                width: 140,
-                height: 140,
-                correctLevel: QRCode.CorrectLevel.L
-            });
-        }
-        feedbackQrGenerator.clear();
-        feedbackQrGenerator.makeCode("FB:COMPLETE");
-        
-        document.getElementById('feedback-desc').innerText = "Transfer Complete! Show this to MacBook camera.";
-        document.querySelector('#receiver-feedback-card button').style.display = 'none';
-        document.getElementById('receiver-feedback-card').style.display = 'flex';
     }
 
     function resumeReceiverScanning() {
