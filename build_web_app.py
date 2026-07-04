@@ -818,6 +818,15 @@ def main():
             return;
         }}
         
+        // Defensive check: navigator.mediaDevices is undefined on insecure contexts (HTTP/Safari local file://)
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {{
+            alert("Acoustic Sync is not supported by your browser in this context (insecure HTTP or local file://). Please access the app via HTTPS (e.g. the GitHub Pages URL) to use this feature.");
+            document.getElementById('sender-acoustic-toggle').checked = false;
+            isSenderAcousticEnabled = false;
+            isWaitingForAck = false;
+            return;
+        }}
+        
         if (!senderAudioCtx) {{
             senderAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
             senderAnalyser = senderAudioCtx.createAnalyser();
