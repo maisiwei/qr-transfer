@@ -729,6 +729,7 @@ def main():
     var sendTimer = null;
     var isSendingPlaying = true;
     var frameDuration = 250;
+    var isFileMode = false;
     
     // File upload state variables
     var selectedFile = null;
@@ -1177,7 +1178,7 @@ def main():
     function updateDensity(level) {{
         currentDensityLevel = level;
         
-        var isFile = (selectedFile !== null);
+        var isFile = isFileMode;
         var mode = isFile ? "file" : "text";
         chunkSize = densityConfig[mode][level];
         
@@ -1760,6 +1761,7 @@ def main():
     }}
 
     function enableFileMode() {{
+        isFileMode = true;
         document.getElementById('text-input-container').style.display = 'none';
         document.getElementById('file-input-container').style.display = 'block';
         document.getElementById('file-mode-badge').style.display = 'inline-flex';
@@ -1774,7 +1776,7 @@ def main():
 
     // Check URL parameters for file mode activation
     var urlParams = new URLSearchParams(window.location.search);
-    var isFileMode = urlParams.get("mode") === "file";
+    isFileMode = urlParams.get("mode") === "file";
     
     if (isFileMode) {{
         enableFileMode();
