@@ -888,11 +888,7 @@ def main():
             if (val > peak) peak = val;
         }}
         
-        if (qrChunks.length > 0) {{
-            document.getElementById('frame-indicator').innerText = 
-                (currentFrameIndex + 1) + " / " + qrChunks.length + 
-                " | Mic Peak: " + peak + " / 90 (Batch " + (currentBatchIndex + 1) + ")";
-        }}
+
         
         if (peak > 90) {{
             console.log("Acoustic ACK received successfully! Peak: " + peak);
@@ -1490,8 +1486,8 @@ def main():
         osc.type = 'sine';
         osc.frequency.setValueAtTime(15000, receiverAudioCtx.currentTime);
         
-        // Drastically lowered volume to a soft, comfortable 5% (0.05) to protect ears/pets
-        gainNode.gain.setValueAtTime(0.05, receiverAudioCtx.currentTime);
+        // Balanced volume (25% or 0.25) to be soft to human ears but fully detectable by the microphone
+        gainNode.gain.setValueAtTime(0.25, receiverAudioCtx.currentTime);
         
         osc.connect(gainNode);
         gainNode.connect(receiverAudioCtx.destination);
