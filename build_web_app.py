@@ -1061,6 +1061,7 @@ def main():
     var receiverAudioCtx = null;
     var lastAckedBatch = -1;
     var lastScannedIndex = -1;
+    var lastAckTime = 0;
     
     function toggleReceiverAcoustic(enabled) {{
         isReceiverAcousticEnabled = enabled;
@@ -1136,6 +1137,7 @@ def main():
         receivedBlob = null;
         lastAckedBatch = -1;
         lastScannedIndex = -1;
+        lastAckTime = 0;
         
         document.getElementById('success-box').style.display = 'none';
         document.getElementById('hud-status').style.display = 'block';
@@ -1325,9 +1327,15 @@ def main():
                 }}
                 
                 if (hasAllCurrentBatch) {{
+                    var now = Date.now();
                     if (batchNum > lastAckedBatch) {{
                         playAcousticAck();
                         lastAckedBatch = batchNum;
+                        lastAckTime = now;
+                    }} else if (batchNum === lastAckedBatch && (now - lastAckTime > 2500)) {{
+                        // MacBook missed the previous chime; re-emit ACK
+                        playAcousticAck();
+                        lastAckTime = now;
                     }}
                 }}
             }}
