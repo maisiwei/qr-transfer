@@ -842,6 +842,7 @@ def main():
                 document.getElementById('sender-video-container').style.display = 'block';
                 
                 var video = document.getElementById('sender-video');
+                video.style.display = 'block';
                 video.setAttribute("playsinline", true);
                 video.srcObject = stream;
                 video.play().catch(function(e) {{
