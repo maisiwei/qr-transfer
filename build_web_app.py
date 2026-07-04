@@ -218,8 +218,8 @@ def main():
         }}
 
         #qrcode canvas, #qrcode img {{
-            width: 310px !important;
-            height: 310px !important;
+            width: 318px !important;
+            height: 318px !important;
             image-rendering: -moz-crisp-edges;
             image-rendering: -webkit-crisp-edges;
             image-rendering: pixelated;
@@ -808,8 +808,8 @@ def main():
         qrContainer.innerHTML = ''; // Clear
         qrGenerator = new QRCode(qrContainer, {{
             text: "1/1:Init",
-            width: 600,
-            height: 600,
+            width: 636,
+            height: 636,
             correctLevel: QRCode.CorrectLevel.L
         }});
         
@@ -1309,8 +1309,8 @@ def main():
         qrContainer.innerHTML = ''; // Clear
         qrGenerator = new QRCode(qrContainer, {{
             text: "1/1:Init",
-            width: 600,
-            height: 600,
+            width: 636,
+            height: 636,
             correctLevel: QRCode.CorrectLevel.L
         }});
         
@@ -1408,8 +1408,11 @@ def main():
         }}
         
         var selectedCameraId = document.getElementById('camera-select').value;
+        var videoConstraints = selectedCameraId ? {{ deviceId: {{ exact: selectedCameraId }} }} : {{ facingMode: 'environment' }};
+        videoConstraints.width = {{ ideal: 1280 }};
+        videoConstraints.height = {{ ideal: 720 }};
         var constraints = {{
-            video: selectedCameraId ? {{ deviceId: {{ exact: selectedCameraId }} }} : {{ facingMode: 'environment' }}
+            video: videoConstraints
         }};
         
         navigator.mediaDevices.getUserMedia(constraints)
@@ -1488,7 +1491,7 @@ def main():
                 var height = videoElement.videoHeight;
                 
                 // Downscale resolution for mobile CPU decoding performance (prevents browser lag)
-                var maxDim = 480;
+                var maxDim = 720;
                 if (width > maxDim || height > maxDim) {{
                     if (width > height) {{
                         height = Math.round((height * maxDim) / width);
