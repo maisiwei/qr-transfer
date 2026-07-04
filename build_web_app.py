@@ -510,7 +510,7 @@ def main():
             <textarea id="send-input" placeholder="Type or paste your text here..." oninput="handleInput()"></textarea>
             <div class="char-counter">
                 <span id="char-count">0 characters</span>
-                <span id="chunk-count">0 chunks (100 chars/chunk)</span>
+                <span id="chunk-count">0 chunks (800 chars/chunk)</span>
             </div>
             <button id="btn-start-send" class="btn" onclick="startSending()">Generate QR Loop</button>
         </div>
@@ -528,30 +528,14 @@ def main():
             </div>
         </div>
         
-        <div id="density-control" style="margin-top: 15px; display: flex; flex-direction: column; gap: 4px; width: 100%; box-sizing: border-box;">
-            <div style="font-weight: 500; font-size: 0.85rem; color: var(--text-muted); display: flex; justify-content: space-between;">
-                <span>QR Density / Pixel Size</span>
-                <span id="density-val" style="font-weight: 600; color: var(--theme-color);">Medium (100 chars)</span>
-            </div>
-            <select id="density-select" class="select-input" style="padding: 8px; border-radius: 8px;" onchange="updateDensity(this.value)">
-                <option value="low">Low Density (Big pixels - easiest to scan)</option>
-                <option value="medium" selected>Medium Density (Balanced)</option>
-                <option value="high">High Density (Smaller pixels)</option>
-                <option value="very-high">Very High Density (Dense pixels)</option>
-                <option value="extreme">Extreme Density (Faster - requires good camera)</option>
-                <option value="max">Maximum Density (Highest speed - requires perfect focus)</option>
-            </select>
-        </div>
+
         
         <div class="qr-display-container">
             <div id="qr-wrapper" class="qr-wrapper">
                 <div id="qrcode"></div>
             </div>
             
-            <div id="speed-control" class="speed-control">
-                <label for="speed-range">Frame Duration: <span id="speed-val">250</span>ms</label>
-                <input type="range" id="speed-range" min="150" max="600" step="25" value="250" oninput="updateSpeed(this.value)">
-            </div>
+
             
             <div id="qr-controls" class="qr-controls">
                 <button class="btn" style="padding: 8px 16px;" onclick="togglePlay()">Play/Pause</button>
@@ -728,34 +712,13 @@ def main():
     var currentFrameIndex = 0;
     var sendTimer = null;
     var isSendingPlaying = true;
-    var frameDuration = 250;
+    var frameDuration = 150; // Locked at 150ms
     var isFileMode = false;
     
     // File upload state variables
     var selectedFile = null;
     var fileBase64 = "";
-    
-    // QR Density Config and State
-    var densityConfig = {{
-        text: {{
-            low: 50,
-            medium: 100,
-            high: 180,
-            'very-high': 300,
-            extreme: 450,
-            max: 600
-        }},
-        file: {{
-            low: 150,
-            medium: 300,
-            high: 450,
-            'very-high': 600,
-            extreme: 800,
-            max: 1000
-        }}
-    }};
-    var currentDensityLevel = "medium";
-    var chunkSize = 100; // Default text medium size
+    var chunkSize = 800; // Locked at 800 chars/chunk
 
     // Feedback QR Sender Variables
     var senderCamStream = null;
@@ -776,8 +739,8 @@ def main():
         var text = document.getElementById('send-input').value;
         document.getElementById('char-count').innerText = text.length + ' characters';
         
-        var chunksCount = Math.ceil(text.length / chunkSize);
-        document.getElementById('chunk-count').innerText = chunksCount + ' chunks (' + chunkSize + ' chars/chunk)';
+        var chunksCount = Math.ceil(text.length / 800);
+        document.getElementById('chunk-count').innerText = chunksCount + ' chunks (800 chars/chunk)';
     }}
 
     function getQrSize() {{
@@ -812,7 +775,6 @@ def main():
         // Show displays
         document.getElementById('qr-wrapper').style.display = 'flex';
         document.getElementById('qr-controls').style.display = 'flex';
-        document.getElementById('speed-control').style.display = 'flex';
         
         // Initialize QR library
         var qrContainer = document.getElementById("qrcode");
@@ -1167,47 +1129,7 @@ def main():
         }}
     }}
 
-    function updateSpeed(val) {{
-        frameDuration = parseInt(val);
-        document.getElementById('speed-val').innerText = val;
-        if (isSendingPlaying) {{
-            playFrames();
-        }}
-    }}
 
-    function updateDensity(level) {{
-        currentDensityLevel = level;
-        
-        var isFile = isFileMode;
-        var mode = isFile ? "file" : "text";
-        chunkSize = densityConfig[mode][level];
-        
-        var labelText = level.charAt(0).toUpperCase() + level.slice(1).replace("-", " ") + " (" + chunkSize + " chars)";
-        var densityValEl = document.getElementById('density-val');
-        if (densityValEl) {{
-            densityValEl.innerText = labelText;
-        }}
-        
-        // Refresh input counters
-        handleInput();
-        
-        // If actively sending, regenerate chunks and restart loop instantly
-        if (qrChunks.length > 0) {{
-            if (isFile) {{
-                setupFileChunks(selectedFile.name, selectedFile.type, selectedFile.sha256, selectedFile.size);
-            }} else {{
-                var text = document.getElementById('send-input').value.trim();
-                if (text) {{
-                    qrChunks = [];
-                    for (var i = 0; i < text.length; i += chunkSize) {{
-                        qrChunks.push(text.substring(i, i + chunkSize));
-                    }}
-                    currentFrameIndex = 0;
-                    playFrames();
-                }}
-            }}
-        }}
-    }}
 
     // --- FILE TRANSFER SENDER HELPERS ---
     function triggerFileBrowse() {{
@@ -1280,7 +1202,6 @@ def main():
         qrContainer.innerHTML = '';
         document.getElementById('qr-wrapper').style.display = 'none';
         document.getElementById('qr-controls').style.display = 'none';
-        document.getElementById('speed-control').style.display = 'none';
         
         // Reset file uploader input values
         document.getElementById('file-loader').value = "";
@@ -1288,9 +1209,6 @@ def main():
         // Reset Drop Zone visuals
         document.getElementById('file-info').style.display = 'none';
         document.getElementById('drop-text').style.display = 'block';
-        
-        // Reset chunkSize back to text mode density and update char counter
-        updateDensity(currentDensityLevel);
     }}
 
     function setupFileChunks(filename, mimeType, sha256, size) {{
@@ -1315,7 +1233,6 @@ def main():
         // Show controls and immediately start playing the loop!
         document.getElementById('qr-wrapper').style.display = 'flex';
         document.getElementById('qr-controls').style.display = 'flex';
-        document.getElementById('speed-control').style.display = 'flex';
         
         var qrContainer = document.getElementById("qrcode");
         qrContainer.innerHTML = ''; // Clear
@@ -1766,8 +1683,7 @@ def main():
         document.getElementById('file-input-container').style.display = 'block';
         document.getElementById('file-mode-badge').style.display = 'inline-flex';
         
-        // Set file-mode chunkSize and update labels
-        updateDensity(currentDensityLevel);
+
         
         // Push URL parameter dynamically without reloading page
         var newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + "?mode=file";
