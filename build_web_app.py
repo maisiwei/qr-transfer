@@ -213,8 +213,17 @@ def main():
             display: none;
             align-items: center;
             justify-content: center;
-            width: 250px;
-            height: 250px;
+            width: 350px;
+            height: 350px;
+        }}
+
+        #qrcode canvas, #qrcode img {{
+            width: 310px !important;
+            height: 310px !important;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
         }}
 
         .qr-controls {{
@@ -799,8 +808,8 @@ def main():
         qrContainer.innerHTML = ''; // Clear
         qrGenerator = new QRCode(qrContainer, {{
             text: "1/1:Init",
-            width: 218,
-            height: 218,
+            width: 600,
+            height: 600,
             correctLevel: QRCode.CorrectLevel.L
         }});
         
@@ -841,7 +850,7 @@ def main():
                 indexToSend += 1; // 1-based index for text mode
             }}
             
-            var headerText = indexToSend + "/" + total + ":" + payload;
+            var headerText = indexToSend + "/" + total + "/" + frameDuration + ":" + payload;
             
             qrGenerator.clear();
             qrGenerator.makeCode(headerText);
@@ -1300,8 +1309,8 @@ def main():
         qrContainer.innerHTML = ''; // Clear
         qrGenerator = new QRCode(qrContainer, {{
             text: "1/1:Init",
-            width: 218,
-            height: 218,
+            width: 600,
+            height: 600,
             correctLevel: QRCode.CorrectLevel.L
         }});
         
@@ -1335,6 +1344,8 @@ def main():
     // Feedback QR Receiver Variables
     var feedbackQrGenerator = null;
     var isReceiverAcousticEnabled = false; // Kept for logic compatibility
+    var senderFrameDuration = 250;         // Default fallback sender speed
+    var lastDecodeTime = 0;                // For CPU throttling cool-down
 
     function loadCameras() {{
         var select = document.getElementById('camera-select');
@@ -1385,6 +1396,8 @@ def main():
             scanFrameCount = 0;
             fileMetadata = null;
             receivedBlob = null;
+            senderFrameDuration = 250;
+            lastDecodeTime = 0;
         }}
         
         document.getElementById('success-box').style.display = 'none';
@@ -1452,6 +1465,15 @@ def main():
     }}
 
     function scanTick() {{
+        var now = Date.now();
+        // Skip scanning canvas frames if we decoded a frame very recently (up to 70% of sender's cycle time)
+        if (now - lastDecodeTime < (senderFrameDuration * 0.7)) {{
+            if (cameraStream) {{
+                scanAnimationId = requestAnimationFrame(scanTick);
+            }}
+            return;
+        }}
+        
         if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {{
             try {{
                 scanFrameCount++;
@@ -1488,7 +1510,14 @@ def main():
                 
                 if (code) {{
                     var matched = processDecodedText(code.data);
-                    if (!matched) {{
+                    if (matched) {{
+                        lastDecodeTime = Date.now(); // Trigger cool-down on successful decode
+                        // Display sender transmission metrics in scanner status
+                        var currentCount = Object.keys(receivedChunks).length;
+                        var statusMsg = fileMetadata ? "Receiving file: " + fileMetadata.name : "Scanning chunks...";
+                        statusMsg += " (" + senderFrameDuration + "ms sync)";
+                        updateScanProgress(currentCount, totalChunks, statusMsg);
+                    }} else {{
                         document.getElementById('scan-status').innerText = "QR found (invalid format): " + code.data.substring(0, 15) + "...";
                     }}
                 }}
@@ -1508,14 +1537,20 @@ def main():
         if (data && data.charCodeAt(0) === 0xFEFF) {{
             data = data.substring(1);
         }}
-        // Protocol matching: index/total:payload
-        var regex = /^(\d+)\/(\d+):([\s\S]*)$/;
+        // Protocol matching: index/total/interval:payload or index/total:payload
+        var regex = /^(\d+)\/(\d+)(?:\/(\d+))?:([\s\S]*)$/;
         var match = regex.exec(data);
         if (!match) return false;
         
         var index = parseInt(match[1]);
         var total = parseInt(match[2]);
-        var payload = match[3];
+        var interval = match[3] ? parseInt(match[3]) : null;
+        var payload = match[4];
+        
+        // Dynamically update scanner cool-down to match sender interval speed
+        if (interval && interval >= 100) {{
+            senderFrameDuration = interval;
+        }}
         
         if (totalChunks !== -1 && totalChunks !== total) {{
             // Reset if chunk total changes (scanning a new code)
