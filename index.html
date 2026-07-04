@@ -496,9 +496,16 @@
                 <span id="frame-indicator" style="font-size: 0.85rem; color: var(--text-muted)">0 / 0</span>
             </div>
             
-            <div style="margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.85rem; color: var(--text-muted);">
-                <input type="checkbox" id="sender-acoustic-toggle" onchange="toggleSenderAcoustic(this.checked)" style="cursor: pointer;">
-                <label for="sender-acoustic-toggle" style="cursor: pointer; user-select: none;">Acoustic Sync Loop (Beta)</label>
+            <div id="sender-camera-panel" style="margin-top: 15px; display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%;">
+                <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                    <div id="sender-cam-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; transition: background 0.3s;"></div>
+                    <span>Bi-directional Optical Feedback Link</span>
+                </div>
+                <div id="sender-video-container" style="position: relative; width: 200px; height: 150px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-card); background: #000; display: none;">
+                    <video id="sender-video" style="width: 100%; height: 100%; object-fit: cover;" autoplay playsinline muted></video>
+                    <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; box-shadow: inset 0 0 15px rgba(16, 185, 129, 0.4); pointer-events: none; border: 2px solid #10b981; border-radius: 8px; box-sizing: border-box; transition: all 0.3s;" id="sender-video-border"></div>
+                </div>
+                <button type="button" id="btn-toggle-sender-cam" class="btn" style="padding: 6px 12px; font-size: 0.8rem; background: var(--bg-base); border: 1px solid var(--border-card);" onclick="toggleSenderCam()">Enable Feedback Camera</button>
             </div>
         </div>
     </div>
@@ -526,9 +533,12 @@
 
         <button id="btn-start-scan" class="btn" onclick="toggleScanner()">Start Scanner</button>
         
-        <div style="margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.85rem; color: var(--text-muted);">
-            <input type="checkbox" id="receiver-acoustic-toggle" onchange="toggleReceiverAcoustic(this.checked)" style="cursor: pointer;">
-            <label for="receiver-acoustic-toggle" style="cursor: pointer; user-select: none;">Acoustic Sync Handshake (Beta)</label>
+        <!-- Feedback QR Code Display -->
+        <div id="receiver-feedback-card" style="display: none; flex-direction: column; align-items: center; gap: 10px; margin-top: 15px; padding: 15px; background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-card); width: 100%; box-sizing: border-box;">
+            <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">Point this code at MacBook's webcam</div>
+            <div id="feedback-qrcode" style="background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: inline-block;"></div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);" id="feedback-desc">Requesting missing chunks...</div>
+            <button class="btn" style="padding: 6px 12px; font-size: 0.8rem; background: var(--theme-color); color: #000; font-weight: 600; width: 100%;" onclick="resumeReceiverScanning()">Resume Scanning</button>
         </div>
 
         <div id="hud-status" class="hud-status-card" style="display: none;">
@@ -538,6 +548,9 @@
             </div>
             <div class="progress-bar-bg">
                 <div id="scan-progress-bar" class="progress-bar-fill"></div>
+            </div>
+            <div style="margin-top: 10px; display: flex; gap: 8px; width: 100%;">
+                <button type="button" id="btn-request-missing" class="btn" style="flex: 1; padding: 6px 12px; font-size: 0.8rem; background: rgba(16, 185, 129, 0.1); border: 1px solid var(--theme-color); color: var(--theme-color);" onclick="showMissingChunksQR()">Request Missing Chunks</button>
             </div>
         </div>
 
@@ -701,6 +714,9 @@
             alert("Please enter some text to send.");
             return;
         }
+        
+        window.originalQrChunks = null; // Clear backup queue
+        lastScannedFeedback = "";       // Clear feedback memory
         
         // Stop any current animation
         if (sendTimer) clearInterval(sendTimer);
@@ -899,7 +915,6 @@
     function togglePlay() {
         if (isSendingPlaying) {
             clearInterval(sendTimer);
-            isWaitingForAck = false;
             isSendingPlaying = false;
         } else {
             isSendingPlaying = true;
@@ -980,6 +995,8 @@
         // Stop any sending loops and clear the QR view
         if (sendTimer) clearInterval(sendTimer);
         qrChunks = [];
+        window.originalQrChunks = null;
+        lastScannedFeedback = "";
         var qrContainer = document.getElementById("qrcode");
         qrContainer.innerHTML = '';
         document.getElementById('qr-wrapper').style.display = 'none';
@@ -1003,15 +1020,14 @@
         var total = totalDataChunks + 1; // +1 for Manifest Frame at index 0
         
         qrChunks = [];
-        // Frame 0: Manifest Frame
-        qrChunks.push("0/" + total + ":" + cleanName + ";" + mimeType + ";" + sha256 + ";" + size);
+        // Frame 0: Manifest Frame (raw content, no prefix!)
+        qrChunks.push(cleanName + ";" + mimeType + ";" + sha256 + ";" + size);
         
-        // Frame 1 to N: Base64 data chunks
+        // Frame 1 to N: Base64 data chunks (raw contents, no prefix!)
         for (var i = 0; i < totalDataChunks; i++) {
             var start = i * 800;
             var end = start + 800;
-            var chunkData = fileBase64.substring(start, end);
-            qrChunks.push((i + 1) + "/" + total + ":" + chunkData);
+            qrChunks.push(fileBase64.substring(start, end));
         }
         
         // Show controls and immediately start playing the loop!
@@ -1055,36 +1071,9 @@
     var fileMetadata = null; // Stores parsed manifest frame details
     var receivedBlob = null;   // Stores decoded binary file Blob
     
-    // Acoustic Sync Receiver Variables
-    var isReceiverAcousticEnabled = false;
-    var receiverAudioCtx = null;
-    var lastAckedBatch = -1;
-    var lastScannedIndex = -1;
-    var lastAckTime = 0;
-    
-    function toggleReceiverAcoustic(enabled) {
-        isReceiverAcousticEnabled = enabled;
-        if (enabled) {
-            if (!receiverAudioCtx) {
-                receiverAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (receiverAudioCtx.state === 'suspended') {
-                receiverAudioCtx.resume();
-            }
-            // Play a dummy silent tone to unlock iOS audio pipeline immediately
-            try {
-                var osc = receiverAudioCtx.createOscillator();
-                var gain = receiverAudioCtx.createGain();
-                gain.gain.setValueAtTime(0, receiverAudioCtx.currentTime);
-                osc.connect(gain);
-                gain.connect(receiverAudioCtx.destination);
-                osc.start();
-                osc.stop(receiverAudioCtx.currentTime + 0.01);
-            } catch(e) {
-                console.warn("Audio unlock failed", e);
-            }
-        }
-    }
+    // Feedback QR Receiver Variables
+    var feedbackQrGenerator = null;
+    var isReceiverAcousticEnabled = false; // Kept for logic compatibility
 
     function loadCameras() {
         var select = document.getElementById('camera-select');
@@ -1127,20 +1116,22 @@
         }
     }
 
-    function startScanner() {
-        receivedChunks = {};
-        totalChunks = -1;
-        scanResult = "";
-        scanFrameCount = 0;
-        fileMetadata = null;
-        receivedBlob = null;
-        lastAckedBatch = -1;
-        lastScannedIndex = -1;
-        lastAckTime = 0;
+    function startScanner(resume) {
+        if (!resume) {
+            receivedChunks = {};
+            totalChunks = -1;
+            scanResult = "";
+            scanFrameCount = 0;
+            fileMetadata = null;
+            receivedBlob = null;
+        }
         
         document.getElementById('success-box').style.display = 'none';
         document.getElementById('hud-status').style.display = 'block';
-        updateScanProgress(0, 0, "Initializing camera...");
+        
+        if (!resume) {
+            updateScanProgress(0, 0, "Initializing camera...");
+        }
         
         var selectedCameraId = document.getElementById('camera-select').value;
         var constraints = {
@@ -1290,10 +1281,8 @@
         if (isNew) {
             receivedChunks[index] = payload;
             
-            // Suppress repeating tick sounds if Acoustic Handshake is enabled
-            if (!isReceiverAcousticEnabled) {
-                playSound('tick');
-            }
+            // In silent/feedback optical mode, we don't play ticking sounds to keep it fully silent
+            // unless the user wants fallback sounds.
             
             var count = Object.keys(receivedChunks).length;
             var statusText = fileMetadata ? "Receiving file: " + fileMetadata.name : "Scanning chunks...";
@@ -1302,44 +1291,6 @@
             if (count === total) {
                 finishScanning();
                 return true;
-            }
-        }
-        
-        // Check for Acoustic Sync chimes for every successfully scanned frame (new or repeated)
-        if (isReceiverAcousticEnabled && Object.keys(receivedChunks).length < total) {
-            var zeroBasedIndex = fileMetadata ? index : index - 1;
-            
-            // If sender rewound/retried, reset the ACK index state
-            if (zeroBasedIndex < lastScannedIndex) {
-                lastAckedBatch = Math.floor(zeroBasedIndex / batchSize) - 1;
-            }
-            lastScannedIndex = zeroBasedIndex;
-            
-            var batchNum = Math.floor(zeroBasedIndex / batchSize);
-            var batchStartZero = batchNum * batchSize;
-            var batchEndZero = Math.min(batchStartZero + batchSize, total);
-            
-            // Verify if we have collected all frames in the current range
-            var hasAllCurrentBatch = true;
-            for (var k = batchStartZero; k < batchEndZero; k++) {
-                var actualKey = fileMetadata ? k : k + 1;
-                if (!receivedChunks[actualKey]) {
-                    hasAllCurrentBatch = false;
-                    break;
-                }
-            }
-            
-            if (hasAllCurrentBatch) {
-                var now = Date.now();
-                if (batchNum > lastAckedBatch) {
-                    playAcousticAck();
-                    lastAckedBatch = batchNum;
-                    lastAckTime = now;
-                } else if (batchNum === lastAckedBatch && (now - lastAckTime > 2500)) {
-                    // Missed tone: re-emit chime every 2.5 seconds
-                    playAcousticAck();
-                    lastAckTime = now;
-                }
             }
         }
         return true;
@@ -1351,6 +1302,9 @@
         
         document.getElementById('hud-status').style.display = 'none';
         document.getElementById('success-box').style.display = 'flex';
+        
+        // Render FB:COMPLETE feedback code so the MacBook can confirm success
+        showCompleteFeedbackQR();
         
         if (fileMetadata) {
             // File Mode Reassembly
@@ -1452,31 +1406,72 @@
             });
     }
 
-    function playAcousticAck() {
-        if (!receiverAudioCtx) {
-            receiverAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function showMissingChunksQR() {
+        stopScanner();
+        
+        var missingArray = [];
+        var total = totalChunks;
+        
+        if (total > 0) {
+            var isFile = (fileMetadata !== null);
+            var start = isFile ? 0 : 1;
+            var end = isFile ? total : total + 1;
+            
+            for (var k = start; k < end; k++) {
+                if (!receivedChunks[k]) {
+                    missingArray.push(k);
+                }
+            }
         }
-        if (receiverAudioCtx.state === 'suspended') {
-            receiverAudioCtx.resume();
+        
+        var payload = "FB:COMPLETE";
+        if (missingArray.length > 0) {
+            var compressed = compressMissingIndices(missingArray);
+            payload = "FB:" + compressed;
+            document.getElementById('feedback-desc').innerText = "Requesting " + missingArray.length + " missing chunks.";
+        } else {
+            document.getElementById('feedback-desc').innerText = "Transfer Complete! Show this to MacBook camera.";
         }
-        console.log("Emitting quiet 15.0 kHz ACK tone");
         
-        var osc = receiverAudioCtx.createOscillator();
-        var gainNode = receiverAudioCtx.createGain();
+        var hasMissing = (missingArray.length > 0);
+        document.querySelector('#receiver-feedback-card button').style.display = hasMissing ? 'block' : 'none';
         
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(15000, receiverAudioCtx.currentTime);
+        if (!feedbackQrGenerator) {
+            feedbackQrGenerator = new QRCode(document.getElementById("feedback-qrcode"), {
+                text: "Init",
+                width: 140,
+                height: 140,
+                correctLevel: QRCode.CorrectLevel.L
+            });
+        }
+        feedbackQrGenerator.clear();
+        feedbackQrGenerator.makeCode(payload);
         
-        // Balanced volume (25% or 0.25) to be soft to human ears but fully detectable by the microphone
-        gainNode.gain.setValueAtTime(0.25, receiverAudioCtx.currentTime);
+        document.getElementById('hud-status').style.display = 'none';
+        document.getElementById('receiver-feedback-card').style.display = 'flex';
+    }
+
+    function showCompleteFeedbackQR() {
+        if (!feedbackQrGenerator) {
+            feedbackQrGenerator = new QRCode(document.getElementById("feedback-qrcode"), {
+                text: "Init",
+                width: 140,
+                height: 140,
+                correctLevel: QRCode.CorrectLevel.L
+            });
+        }
+        feedbackQrGenerator.clear();
+        feedbackQrGenerator.makeCode("FB:COMPLETE");
         
-        osc.connect(gainNode);
-        gainNode.connect(receiverAudioCtx.destination);
-        
-        osc.start();
-        // Shortened chime to 250ms with a clean fade-out to prevent speaker pop
-        gainNode.gain.exponentialRampToValueAtTime(0.0001, receiverAudioCtx.currentTime + 0.25);
-        osc.stop(receiverAudioCtx.currentTime + 0.25);
+        document.getElementById('feedback-desc').innerText = "Transfer Complete! Show this to MacBook camera.";
+        document.querySelector('#receiver-feedback-card button').style.display = 'none';
+        document.getElementById('receiver-feedback-card').style.display = 'flex';
+    }
+
+    function resumeReceiverScanning() {
+        document.getElementById('receiver-feedback-card').style.display = 'none';
+        document.getElementById('hud-status').style.display = 'block';
+        startScanner(true); // Resume scanning
     }
 
     function enableFileMode() {
