@@ -1361,7 +1361,12 @@ def main():
                 document.getElementById('camera-placeholder').style.display = 'none';
                 document.getElementById('scanner-hud').classList.add('active');
                 videoElement.play();
-                updateScanProgress(0, 0, "Looking for QR code...");
+                if (!resume) {{
+                    updateScanProgress(0, 0, "Looking for QR code...");
+                }} else {{
+                    var currentCount = Object.keys(receivedChunks).length;
+                    updateScanProgress(currentCount, totalChunks, "Resuming scanner...");
+                }}
                 
                 // Start scan animation frame loop
                 scanAnimationId = requestAnimationFrame(scanTick);
