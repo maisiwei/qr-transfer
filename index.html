@@ -164,6 +164,12 @@
             opacity: 0.9;
         }
 
+        .btn-secondary {
+            background: var(--bg-card) !important;
+            border: 1px solid var(--border-card) !important;
+            color: var(--text-muted) !important;
+        }
+
         .qr-display-container {
             display: flex;
             flex-direction: column;
@@ -1282,9 +1288,9 @@
 
     function changeCamera() {
         if (cameraStream) {
-            // Restart camera with new ID
+            // Restart camera with new ID, preserving current scan progress
             stopScanner();
-            startScanner();
+            startScanner(true);
         }
     }
 
@@ -1293,9 +1299,11 @@
         if (cameraStream) {
             stopScanner();
             btn.innerText = "Start Scanner";
+            btn.classList.remove('btn-secondary');
         } else {
-            startScanner();
+            startScanner(true); // Preserve scan progress when toggling/resuming
             btn.innerText = "Stop Scanner";
+            btn.classList.add('btn-secondary');
         }
     }
 
