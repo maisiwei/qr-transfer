@@ -481,6 +481,19 @@
             </div>
         </div>
         
+        <div id="density-control" style="margin-top: 15px; display: flex; flex-direction: column; gap: 4px; width: 100%; box-sizing: border-box;">
+            <div style="font-weight: 500; font-size: 0.85rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+                <span>QR Density / Pixel Size</span>
+                <span id="density-val" style="font-weight: 600; color: var(--theme-color);">Medium (100 chars)</span>
+            </div>
+            <select id="density-select" class="select-input" style="padding: 8px; border-radius: 8px;" onchange="updateDensity(this.value)">
+                <option value="low">Low Density (Big pixels - easiest to scan)</option>
+                <option value="medium" selected>Medium Density (Balanced)</option>
+                <option value="high">High Density (Smaller pixels - faster transfer)</option>
+                <option value="very-high">Very High Density (Dense pixels)</option>
+            </select>
+        </div>
+        
         <div class="qr-display-container">
             <div id="qr-wrapper" class="qr-wrapper">
                 <div id="qrcode"></div>
@@ -677,7 +690,24 @@
     // File upload state variables
     var selectedFile = null;
     var fileBase64 = "";
-    var chunkSize = 100; // Will be set to 800 in file mode
+    
+    // QR Density Config and State
+    var densityConfig = {
+        text: {
+            low: 50,
+            medium: 100,
+            high: 250,
+            'very-high': 500
+        },
+        file: {
+            low: 300,
+            medium: 600,
+            high: 1000,
+            'very-high': 1500
+        }
+    };
+    var currentDensityLevel = "medium";
+    var chunkSize = 100; // Default text medium size
 
     // Feedback QR Sender Variables
     var senderCamStream = null;
@@ -697,8 +727,8 @@
         var text = document.getElementById('send-input').value;
         document.getElementById('char-count').innerText = text.length + ' characters';
         
-        var chunksCount = Math.ceil(text.length / 100);
-        document.getElementById('chunk-count').innerText = chunksCount + ' chunks (100 chars/chunk)';
+        var chunksCount = Math.ceil(text.length / chunkSize);
+        document.getElementById('chunk-count').innerText = chunksCount + ' chunks (' + chunkSize + ' chars/chunk)';
     }
 
     function startSending() {
@@ -1057,6 +1087,40 @@
         }
     }
 
+    function updateDensity(level) {
+        currentDensityLevel = level;
+        
+        var isFile = (selectedFile !== null);
+        var mode = isFile ? "file" : "text";
+        chunkSize = densityConfig[mode][level];
+        
+        var labelText = level.charAt(0).toUpperCase() + level.slice(1).replace("-", " ") + " (" + chunkSize + " chars)";
+        var densityValEl = document.getElementById('density-val');
+        if (densityValEl) {
+            densityValEl.innerText = labelText;
+        }
+        
+        // Refresh input counters
+        handleInput();
+        
+        // If actively sending, regenerate chunks and restart loop instantly
+        if (qrChunks.length > 0) {
+            if (isFile) {
+                setupFileChunks(selectedFile.name, selectedFile.type, selectedFile.sha256, selectedFile.size);
+            } else {
+                var text = document.getElementById('send-input').value.trim();
+                if (text) {
+                    qrChunks = [];
+                    for (var i = 0; i < text.length; i += chunkSize) {
+                        qrChunks.push(text.substring(i, i + chunkSize));
+                    }
+                    currentFrameIndex = 0;
+                    playFrames();
+                }
+            }
+        }
+    }
+
     // --- FILE TRANSFER SENDER HELPERS ---
     function triggerFileBrowse() {
         document.getElementById('file-loader').click();
@@ -1136,14 +1200,17 @@
         // Reset Drop Zone visuals
         document.getElementById('file-info').style.display = 'none';
         document.getElementById('drop-text').style.display = 'block';
+        
+        // Reset chunkSize back to text mode density and update char counter
+        updateDensity(currentDensityLevel);
     }
 
     function setupFileChunks(filename, mimeType, sha256, size) {
         // Clean filename of semicolons to prevent protocol parsing errors
         var cleanName = filename.replace(/;/g, "_");
         
-        // Total data chunks (800 chars per frame in file mode)
-        var totalDataChunks = Math.ceil(fileBase64.length / 800);
+        // Total data chunks (chunkSize chars per frame in file mode)
+        var totalDataChunks = Math.ceil(fileBase64.length / chunkSize);
         var total = totalDataChunks + 1; // +1 for Manifest Frame at index 0
         
         qrChunks = [];
@@ -1152,8 +1219,8 @@
         
         // Frame 1 to N: Base64 data chunks (raw contents, no prefix!)
         for (var i = 0; i < totalDataChunks; i++) {
-            var start = i * 800;
-            var end = start + 800;
+            var start = i * chunkSize;
+            var end = start + chunkSize;
             qrChunks.push(fileBase64.substring(start, end));
         }
         
@@ -1576,11 +1643,12 @@
     }
 
     function enableFileMode() {
-        chunkSize = 800; // Update the dynamic chunk size
         document.getElementById('text-input-container').style.display = 'none';
         document.getElementById('file-input-container').style.display = 'block';
         document.getElementById('file-mode-badge').style.display = 'inline-flex';
-        document.getElementById('chunk-count').innerText = '0 chunks (800 chars/chunk)';
+        
+        // Set file-mode chunkSize and update labels
+        updateDensity(currentDensityLevel);
         
         // Push URL parameter dynamically without reloading page
         var newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + "?mode=file";
