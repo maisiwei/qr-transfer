@@ -812,15 +812,20 @@ def main():
     function onSenderAckTimeout() {{
         if (!isWaitingForAck) return;
         isWaitingForAck = false;
-        stopSenderListening();
         console.log("Acoustic ACK timeout. Replaying current batch.");
         
         // Reset to start of current batch
         currentFrameIndex = currentBatchIndex * batchSize;
+        playFrames();
     }}
 
     function startSenderListening() {{
-        if (senderIsListening) return;
+        if (senderIsListening) {{
+            if (isWaitingForAck) {{
+                detectAckTone();
+            }}
+            return;
+        }}
         
         if (!senderAudioCtx) {{
             senderAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -839,11 +844,13 @@ def main():
                 var source = senderAudioCtx.createMediaStreamSource(stream);
                 source.connect(senderAnalyser);
                 senderIsListening = true;
-                detectAckTone();
+                
+                if (isWaitingForAck) {{
+                    detectAckTone();
+                }}
             }})
             .catch(function(err) {{
                 console.error("Microphone access failed", err);
-                // Fallback: auto-advance on timeout if microphone is blocked
             }});
     }}
 
@@ -856,7 +863,7 @@ def main():
     }}
 
     function detectAckTone() {{
-        if (!senderIsListening) return;
+        if (!senderIsListening || !isWaitingForAck) return;
         
         var dataArray = new Uint8Array(senderAnalyser.frequencyBinCount);
         senderAnalyser.getByteFrequencyData(dataArray);
@@ -870,7 +877,6 @@ def main():
         if (peak > 180) {{ // Clear tone threshold
             console.log("Acoustic ACK received successfully!");
             isWaitingForAck = false;
-            stopSenderListening();
             if (ackTimeout) clearTimeout(ackTimeout);
             
             currentBatchIndex++;
@@ -888,6 +894,8 @@ def main():
     function togglePlay() {{
         if (isSendingPlaying) {{
             clearInterval(sendTimer);
+            if (ackTimeout) clearTimeout(ackTimeout);
+            isWaitingForAck = false;
             isSendingPlaying = false;
         }} else {{
             isSendingPlaying = true;
