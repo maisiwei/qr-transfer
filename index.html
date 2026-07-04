@@ -842,14 +842,21 @@
         var dataArray = new Uint8Array(senderAnalyser.frequencyBinCount);
         senderAnalyser.getByteFrequencyData(dataArray);
         
-        var binIndex = Math.round(18500 / (senderAudioCtx.sampleRate / 2048));
-        var amplitude = dataArray[binIndex];
-        var neighborAmp1 = dataArray[binIndex - 1] || 0;
-        var neighborAmp2 = dataArray[binIndex + 1] || 0;
-        var peak = Math.max(amplitude, neighborAmp1, neighborAmp2);
+        // Lowered frequency to 15,000 Hz for higher speaker/microphone compatibility
+        var binIndex = Math.round(15000 / (senderAudioCtx.sampleRate / 2048));
         
-        if (peak > 180) { // Clear tone threshold
-            console.log("Acoustic ACK received successfully!");
+        // Scan a 5-bin window for robust detection
+        var peak = 0;
+        for (var offset = -2; offset <= 2; offset++) {
+            var val = dataArray[binIndex + offset] || 0;
+            if (val > peak) peak = val;
+        }
+        
+        // Real-time peak volume diagnostics in the frame indicator
+        document.getElementById('frame-indicator').innerText = "Listen ACK (Peak: " + peak + " / 90)...";
+        
+        if (peak > 90) { // Sensitive threshold (90 out of 255)
+            console.log("Acoustic ACK received successfully! Peak: " + peak);
             isWaitingForAck = false;
             if (ackTimeout) clearTimeout(ackTimeout);
             
@@ -1393,14 +1400,14 @@
         if (receiverAudioCtx.state === 'suspended') {
             receiverAudioCtx.resume();
         }
-        console.log("Emitting 18.5 kHz ACK tone");
+        console.log("Emitting 15.0 kHz ACK tone");
         
         var osc = receiverAudioCtx.createOscillator();
         var gainNode = receiverAudioCtx.createGain();
         
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(18500, receiverAudioCtx.currentTime);
-        gainNode.gain.setValueAtTime(0.5, receiverAudioCtx.currentTime);
+        osc.frequency.setValueAtTime(15000, receiverAudioCtx.currentTime); // Matched to 15.0 kHz
+        gainNode.gain.setValueAtTime(0.6, receiverAudioCtx.currentTime);    // Slightly higher gain
         
         osc.connect(gainNode);
         gainNode.connect(receiverAudioCtx.destination);
