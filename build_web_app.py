@@ -874,6 +874,9 @@ def main():
                 document.getElementById('sender-cam-status-dot').style.background = "#10b981";
                 senderCamIsActive = true;
                 
+                // Show camera controls (including the Flip button) immediately
+                document.getElementById('sender-camera-controls').style.display = 'flex';
+                
                 // Load device lists for switching
                 loadSenderCameras();
                 
