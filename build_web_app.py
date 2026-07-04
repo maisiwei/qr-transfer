@@ -838,7 +838,13 @@ def main():
         
         document.getElementById('frame-indicator').innerText = "Waiting for audio ACK...";
         
-        navigator.mediaDevices.getUserMedia({{ audio: true }})
+        navigator.mediaDevices.getUserMedia({{
+            audio: {{
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false
+            }}
+        }})
             .then(function(stream) {{
                 senderMicStream = stream;
                 var source = senderAudioCtx.createMediaStreamSource(stream);
@@ -883,7 +889,8 @@ def main():
         var binIndex = Math.round(15000 / (senderAudioCtx.sampleRate / 2048));
         
         var peak = 0;
-        for (var offset = -2; offset <= 2; offset++) {{
+        // Broadened search window to +/- 5 bins to cover sample rate mismatches or drift
+        for (var offset = -5; offset <= 5; offset++) {{
             var val = dataArray[binIndex + offset] || 0;
             if (val > peak) peak = val;
         }}
