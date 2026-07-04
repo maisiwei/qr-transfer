@@ -1261,7 +1261,11 @@
         
         if (!receivedChunks[index]) {
             receivedChunks[index] = payload;
-            playSound('tick');
+            
+            // Suppress repeating tick sounds if Acoustic Handshake is enabled
+            if (!isReceiverAcousticEnabled) {
+                playSound('tick');
+            }
             
             var count = Object.keys(receivedChunks).length;
             var statusText = fileMetadata ? "Receiving file: " + fileMetadata.name : "Scanning chunks...";
@@ -1270,27 +1274,31 @@
             if (count === total) {
                 finishScanning();
             } else if (isReceiverAcousticEnabled) {
-                // Check if we rewound due to retry
-                if (index < lastScannedIndex) {
-                    lastAckedBatch = Math.floor(index / batchSize) - 1;
-                }
-                lastScannedIndex = index;
+                // Align 0-based (File) and 1-based (Text) indices for sync range calculation
+                var zeroBasedIndex = fileMetadata ? index : index - 1;
                 
-                // Determine boundaries of current batch
-                var batchStart = Math.floor(index / batchSize) * batchSize;
-                var batchEnd = Math.min(batchStart + batchSize, total);
+                // Check if the MacBook rewound/retried the loop
+                if (zeroBasedIndex < lastScannedIndex) {
+                    lastAckedBatch = Math.floor(zeroBasedIndex / batchSize) - 1;
+                }
+                lastScannedIndex = zeroBasedIndex;
+                
+                // Determine boundaries of the current batch
+                var batchNum = Math.floor(zeroBasedIndex / batchSize);
+                var batchStartZero = batchNum * batchSize;
+                var batchEndZero = Math.min(batchStartZero + batchSize, total);
                 
                 // Verify if we have collected all frames in the current range
                 var hasAllCurrentBatch = true;
-                for (var k = batchStart; k < batchEnd; k++) {
-                    if (!receivedChunks[k]) {
+                for (var k = batchStartZero; k < batchEndZero; k++) {
+                    var actualKey = fileMetadata ? k : k + 1;
+                    if (!receivedChunks[actualKey]) {
                         hasAllCurrentBatch = false;
                         break;
                     }
                 }
                 
                 if (hasAllCurrentBatch) {
-                    var batchNum = Math.floor(index / batchSize);
                     if (batchNum > lastAckedBatch) {
                         playAcousticAck();
                         lastAckedBatch = batchNum;
