@@ -557,7 +557,7 @@
             <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">Point this code at the sender's camera</div>
             <div id="feedback-qrcode" style="background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: inline-block;"></div>
             <div style="font-size: 0.75rem; color: var(--text-muted);" id="feedback-desc">Requesting missing chunks...</div>
-            <button class="btn" style="padding: 6px 12px; font-size: 0.8rem; background: var(--theme-color); color: #000; font-weight: 600; width: 100%;" onclick="resumeReceiverScanning()">Resume Scanning</button>
+            <button class="btn" style="padding: 10px 16px; font-size: 0.85rem; width: 100%; border: none;" onclick="resumeReceiverScanning()">Resume Scanning</button>
         </div>
 
         <div id="hud-status" class="hud-status-card" style="display: none;">
@@ -892,6 +892,7 @@
             // Stop current stream
             if (senderCamStream) {
                 senderCamStream.getTracks().forEach(track => track.stop());
+                senderCamStream = null;
             }
             
             // Clear dropdown select choice since we are switching based on facingMode
@@ -901,20 +902,23 @@
                 video: { facingMode: senderFacingMode }
             };
             
-            navigator.mediaDevices.getUserMedia(constraints)
-                .then(function(stream) {
-                    senderCamStream = stream;
-                    var video = document.getElementById('sender-video');
-                    video.srcObject = stream;
-                    video.play().catch(function(e) {
-                        console.warn("Video flip play failed:", e);
+            // Wait 250ms for iOS Safari to release the camera hardware resource completely
+            setTimeout(function() {
+                navigator.mediaDevices.getUserMedia(constraints)
+                    .then(function(stream) {
+                        senderCamStream = stream;
+                        var video = document.getElementById('sender-video');
+                        video.srcObject = stream;
+                        video.play().catch(function(e) {
+                            console.warn("Video flip play failed:", e);
+                        });
+                    })
+                    .catch(function(err) {
+                        console.error("Flipping camera failed", err);
+                        // Re-start default cam
+                        startSenderCam();
                     });
-                })
-                .catch(function(err) {
-                    console.error("Flipping camera failed", err);
-                    // Re-start default cam
-                    startSenderCam();
-                });
+            }, 250);
         }
     }
 
