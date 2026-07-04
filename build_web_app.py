@@ -855,30 +855,38 @@ def main():
     function detectAckTone() {{
         if (!senderIsListening || !isWaitingForAck) return;
         
+        var now = Date.now();
+        // Ignore microphone detection during 2-second cool-down to let iPhone tone stop playing
+        if (now - lastSenderAckTime < 2000) {{
+            requestAnimationFrame(detectAckTone);
+            return;
+        }}
+        
         var dataArray = new Uint8Array(senderAnalyser.frequencyBinCount);
         senderAnalyser.getByteFrequencyData(dataArray);
         
-        // Lowered frequency to 15,000 Hz for higher speaker/microphone compatibility
         var binIndex = Math.round(15000 / (senderAudioCtx.sampleRate / 2048));
         
-        // Scan a 5-bin window for robust detection
         var peak = 0;
         for (var offset = -2; offset <= 2; offset++) {{
             var val = dataArray[binIndex + offset] || 0;
             if (val > peak) peak = val;
         }}
         
-        // Real-time peak volume diagnostics in the frame indicator
         if (qrChunks.length > 0) {{
             document.getElementById('frame-indicator').innerText = 
                 (currentFrameIndex + 1) + " / " + qrChunks.length + 
                 " | Mic Peak: " + peak + " / 90 (Batch " + (currentBatchIndex + 1) + ")";
         }}
         
-        if (peak > 90) {{ // Sensitive threshold (90 out of 255)
+        if (peak > 90) {{
             console.log("Acoustic ACK received successfully! Peak: " + peak);
+            isWaitingForAck = false;
+            lastSenderAckTime = now; // Initialize cool-down timestamp
             
-            // Advance to next batch
+            // Clear any active interval before spawning the next playFrames
+            if (sendTimer) clearInterval(sendTimer);
+            
             currentBatchIndex++;
             var totalBatches = Math.ceil(qrChunks.length / batchSize);
             if (currentBatchIndex >= totalBatches) {{
@@ -886,7 +894,6 @@ def main():
             }}
             currentFrameIndex = currentBatchIndex * batchSize;
             
-            // Play a local tick sound indicator
             try {{
                 playSound('tick');
             }} catch(e) {{}}
@@ -1457,21 +1464,24 @@ def main():
         if (receiverAudioCtx.state === 'suspended') {{
             receiverAudioCtx.resume();
         }}
-        console.log("Emitting 15.0 kHz ACK tone");
+        console.log("Emitting quiet 15.0 kHz ACK tone");
         
         var osc = receiverAudioCtx.createOscillator();
         var gainNode = receiverAudioCtx.createGain();
         
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(15000, receiverAudioCtx.currentTime); // Matched to 15.0 kHz
-        gainNode.gain.setValueAtTime(0.6, receiverAudioCtx.currentTime);    // Slightly higher gain
+        osc.frequency.setValueAtTime(15000, receiverAudioCtx.currentTime);
+        
+        // Drastically lowered volume to a soft, comfortable 5% (0.05) to protect ears/pets
+        gainNode.gain.setValueAtTime(0.05, receiverAudioCtx.currentTime);
         
         osc.connect(gainNode);
         gainNode.connect(receiverAudioCtx.destination);
         
         osc.start();
-        gainNode.gain.exponentialRampToValueAtTime(0.001, receiverAudioCtx.currentTime + 0.5);
-        osc.stop(receiverAudioCtx.currentTime + 0.5);
+        // Shortened chime to 250ms with a clean fade-out to prevent speaker pop
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, receiverAudioCtx.currentTime + 0.25);
+        osc.stop(receiverAudioCtx.currentTime + 0.25);
     }}
 
     function enableFileMode() {{
