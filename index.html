@@ -673,25 +673,18 @@
     var selectedFile = null;
     var fileBase64 = "";
     var chunkSize = 100; // Will be set to 800 in file mode
+
+    // Feedback QR Sender Variables
+    var senderCamStream = null;
+    var senderCamIsActive = false;
+    var senderScanTimer = null;
+    var lastScannedFeedback = "";
     
-    // Acoustic Sync Sender Variables
-    var isSenderAcousticEnabled = false;
-    var currentBatchIndex = 0;
-    var batchSize = 25;
-    var isWaitingForAck = false;
-    var ackTimeout = null;
-    var senderAudioCtx = null;
-    var senderAnalyser = null;
-    var senderMicStream = null;
-    var senderIsListening = false;
-    
-    function toggleSenderAcoustic(enabled) {
-        isSenderAcousticEnabled = enabled;
-        if (enabled) {
-            startSenderListening();
+    function toggleSenderCam() {
+        if (senderCamIsActive) {
+            stopSenderCam();
         } else {
-            stopSenderListening();
-            isWaitingForAck = false;
+            startSenderCam();
         }
     }
 
@@ -752,164 +745,226 @@
     function playFrames() {
         if (sendTimer) clearInterval(sendTimer);
         
-        if (isSenderAcousticEnabled) {
-            isWaitingForAck = true;
-            startSenderListening();
+        // Start feedback webcam monitoring if active
+        if (senderCamIsActive) {
+            if (!senderScanTimer) {
+                senderScanTimer = setInterval(scanSenderFrame, 300);
+            }
         }
         
         function tickFrame() {
             if (qrChunks.length === 0) return;
             
-            var total = qrChunks.length;
+            var total = window.originalQrChunks ? window.originalQrChunks.length : qrChunks.length;
+            var payload = qrChunks[currentFrameIndex];
+            var isFile = (selectedFile !== null);
             
-            // Calculate batch range boundaries
-            var batchStart = 0;
-            var batchEnd = total;
-            if (isSenderAcousticEnabled) {
-                batchStart = currentBatchIndex * batchSize;
-                batchEnd = Math.min(batchStart + batchSize, total);
-                
-                // Wrap frame index strictly within the current batch boundary
-                if (currentFrameIndex < batchStart || currentFrameIndex >= batchEnd) {
-                    currentFrameIndex = batchStart;
+            // Determine dynamic indexToSend even in filtered sub-loop retransmissions
+            var indexToSend = currentFrameIndex;
+            if (window.originalQrChunks) {
+                var originalIdx = window.originalQrChunks.indexOf(payload);
+                if (originalIdx !== -1) {
+                    indexToSend = originalIdx;
                 }
             }
             
-            var payload = qrChunks[currentFrameIndex];
-            var headerText = (currentFrameIndex + 1) + "/" + total + ":" + payload;
+            if (!isFile) {
+                indexToSend += 1; // 1-based index for text mode
+            }
+            
+            var headerText = indexToSend + "/" + total + ":" + payload;
             
             qrGenerator.clear();
             qrGenerator.makeCode(headerText);
             
-            var indicatorText = (currentFrameIndex + 1) + " / " + total;
-            if (isSenderAcousticEnabled) {
-                indicatorText += " (Batch " + (currentBatchIndex + 1) + ")";
+            var indicatorText = indexToSend + " / " + total;
+            if (window.originalQrChunks) {
+                indicatorText += " (Re-sending " + qrChunks.length + " missing)";
             }
             document.getElementById('frame-indicator').innerText = indicatorText;
             
-            if (isSenderAcousticEnabled) {
-                // Loop continuously inside the current batch
-                var range = batchEnd - batchStart;
-                currentFrameIndex = batchStart + (currentFrameIndex - batchStart + 1) % range;
-            } else {
-                currentFrameIndex = (currentFrameIndex + 1) % total;
-            }
+            currentFrameIndex = (currentFrameIndex + 1) % qrChunks.length;
         }
         
         tickFrame(); // Render first frame instantly
         sendTimer = setInterval(tickFrame, frameDuration);
     }
 
-    function startSenderListening() {
-        if (senderIsListening) {
-            if (isWaitingForAck) {
-                detectAckTone();
-            }
-            return;
-        }
+    function startSenderCam() {
+        if (senderCamIsActive) return;
         
-        // Defensive check: navigator.mediaDevices is undefined on insecure contexts (HTTP/Safari local file://)
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            alert("Acoustic Sync is not supported by your browser in this context (insecure HTTP or local file://). Please access the app via HTTPS (e.g. the GitHub Pages URL) to use this feature.");
-            document.getElementById('sender-acoustic-toggle').checked = false;
-            isSenderAcousticEnabled = false;
-            isWaitingForAck = false;
+            alert("Feedback camera is not supported by your browser in this context (please use HTTPS).");
             return;
         }
         
-        if (!senderAudioCtx) {
-            senderAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            senderAnalyser = senderAudioCtx.createAnalyser();
-            senderAnalyser.fftSize = 2048;
-        }
-        if (senderAudioCtx.state === 'suspended') {
-            senderAudioCtx.resume();
-        }
-        
-        document.getElementById('frame-indicator').innerText = "Waiting for audio ACK...";
-        
-        navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false
-            }
-        })
+        navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } })
             .then(function(stream) {
-                senderMicStream = stream;
-                var source = senderAudioCtx.createMediaStreamSource(stream);
-                source.connect(senderAnalyser);
-                senderIsListening = true;
+                senderCamStream = stream;
+                var video = document.getElementById('sender-video');
+                video.srcObject = stream;
+                video.onloadedmetadata = function() {
+                    video.play();
+                };
                 
-                if (isWaitingForAck) {
-                    detectAckTone();
-                }
+                document.getElementById('sender-video-container').style.display = 'block';
+                document.getElementById('btn-toggle-sender-cam').innerText = "Disable Feedback Camera";
+                document.getElementById('sender-cam-status-dot').style.background = "#10b981";
+                senderCamIsActive = true;
+                
+                // Start scan animation loop
+                senderScanTimer = setInterval(scanSenderFrame, 300);
             })
             .catch(function(err) {
-                console.error("Microphone access failed", err);
-                alert("Microphone access failed. Please allow microphone permission in your browser address bar to use Acoustic Sync.");
-                document.getElementById('sender-acoustic-toggle').checked = false;
-                isSenderAcousticEnabled = false;
-                isWaitingForAck = false;
-                stopSenderListening();
+                console.error("Feedback webcam access failed", err);
+                alert("Failed to access camera: " + err.message);
             });
     }
 
-    function stopSenderListening() {
-        senderIsListening = false;
-        if (senderMicStream) {
-            senderMicStream.getTracks().forEach(track => track.stop());
-            senderMicStream = null;
+    function stopSenderCam() {
+        senderCamIsActive = false;
+        if (senderScanTimer) {
+            clearInterval(senderScanTimer);
+            senderScanTimer = null;
+        }
+        if (senderCamStream) {
+            senderCamStream.getTracks().forEach(track => track.stop());
+            senderCamStream = null;
+        }
+        document.getElementById('sender-video-container').style.display = 'none';
+        document.getElementById('btn-toggle-sender-cam').innerText = "Enable Feedback Camera";
+        document.getElementById('sender-cam-status-dot').style.background = "#94a3b8";
+    }
+
+    function scanSenderFrame() {
+        if (!senderCamIsActive) return;
+        var video = document.getElementById('sender-video');
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            var canvas = document.createElement('canvas');
+            canvas.width = 320;
+            canvas.height = 240;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            var code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: "dontInvert"
+            });
+            
+            if (code && code.data) {
+                handleFeedbackQR(code.data);
+            }
         }
     }
 
-    function detectAckTone() {
-        if (!senderIsListening || !isWaitingForAck) return;
+    function handleFeedbackQR(data) {
+        if (data === lastScannedFeedback) return; // Debounce repeats
+        lastScannedFeedback = data;
         
-        var now = Date.now();
-        // Ignore microphone detection during 2-second cool-down to let iPhone tone stop playing
-        if (now - lastSenderAckTime < 2000) {
-            requestAnimationFrame(detectAckTone);
-            return;
-        }
-        
-        var dataArray = new Uint8Array(senderAnalyser.frequencyBinCount);
-        senderAnalyser.getByteFrequencyData(dataArray);
-        
-        var binIndex = Math.round(15000 / (senderAudioCtx.sampleRate / 2048));
-        
-        var peak = 0;
-        // Broadened search window to +/- 5 bins to cover sample rate mismatches or drift
-        for (var offset = -5; offset <= 5; offset++) {
-            var val = dataArray[binIndex + offset] || 0;
-            if (val > peak) peak = val;
-        }
-        
-
-        
-        if (peak > 90) {
-            console.log("Acoustic ACK received successfully! Peak: " + peak);
-            isWaitingForAck = false;
-            lastSenderAckTime = now; // Initialize cool-down timestamp
-            
-            // Clear any active interval before spawning the next playFrames
-            if (sendTimer) clearInterval(sendTimer);
-            
-            currentBatchIndex++;
-            var totalBatches = Math.ceil(qrChunks.length / batchSize);
-            if (currentBatchIndex >= totalBatches) {
-                currentBatchIndex = 0; // Loop completed
-            }
-            currentFrameIndex = currentBatchIndex * batchSize;
-            
+        if (data === "FB:COMPLETE") {
+            console.log("Feedback Link: Transfer Complete confirmed!");
             try {
-                playSound('tick');
+                playSound('success');
             } catch(e) {}
             
-            playFrames();
-        } else {
-            requestAnimationFrame(detectAckTone);
+            flashSenderCamBorder("#10b981");
+            
+            if (isSendingPlaying) {
+                togglePlay();
+            }
+            document.getElementById('frame-indicator').innerText = "Transfer Completed Successfully!";
+            alert("Receiver confirmed successful file/text transfer!");
+            
+        } else if (data.startsWith("FB:")) {
+            var missingStr = data.substring(3);
+            var missingIndices = decompressMissingIndices(missingStr);
+            
+            console.log("Feedback Link: Missing indices received:", missingIndices);
+            
+            if (missingIndices.length > 0) {
+                try {
+                    playSound('tick');
+                } catch(e) {}
+                
+                flashSenderCamBorder("#f59e0b");
+                
+                if (!window.originalQrChunks) {
+                    window.originalQrChunks = [...qrChunks];
+                }
+                
+                var newChunks = [];
+                var isFile = (selectedFile !== null);
+                
+                for (var i = 0; i < missingIndices.length; i++) {
+                    var idx = missingIndices[i];
+                    var originalIdx = isFile ? idx : idx - 1;
+                    if (window.originalQrChunks[originalIdx] !== undefined) {
+                        newChunks.push(window.originalQrChunks[originalIdx]);
+                    }
+                }
+                
+                if (newChunks.length > 0) {
+                    qrChunks = newChunks;
+                    currentFrameIndex = 0;
+                    
+                    document.getElementById('frame-indicator').innerText = "Re-sending " + qrChunks.length + " missing chunks...";
+                    playFrames();
+                }
+            }
         }
+    }
+
+    function flashSenderCamBorder(color) {
+        var border = document.getElementById('sender-video-border');
+        if (!border) return;
+        border.style.borderColor = color;
+        border.style.boxShadow = "inset 0 0 20px " + color;
+        setTimeout(function() {
+            border.style.borderColor = "#10b981";
+            border.style.boxShadow = "inset 0 0 15px rgba(16, 185, 129, 0.4)";
+        }, 1000);
+    }
+
+    function compressMissingIndices(arr) {
+        if (arr.length === 0) return "";
+        var parts = [];
+        var start = arr[0];
+        var prev = arr[0];
+        for (var i = 1; i <= arr.length; i++) {
+            var curr = arr[i];
+            if (curr === prev + 1) {
+                prev = curr;
+            } else {
+                if (start === prev) {
+                    parts.push(start);
+                } else {
+                    parts.push(start + "-" + prev);
+                }
+                start = curr;
+                prev = curr;
+            }
+        }
+        return parts.join(",");
+    }
+
+    function decompressMissingIndices(str) {
+        if (!str) return [];
+        var arr = [];
+        var parts = str.split(",");
+        for (var i = 0; i < parts.length; i++) {
+            var p = parts[i];
+            if (p.indexOf("-") !== -1) {
+                var range = p.split("-");
+                var s = parseInt(range[0]);
+                var e = parseInt(range[1]);
+                for (var j = s; j <= e; j++) {
+                    arr.push(j);
+                }
+            } else {
+                arr.push(parseInt(p));
+            }
+        }
+        return arr;
     }
 
     function togglePlay() {
