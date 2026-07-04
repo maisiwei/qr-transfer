@@ -174,19 +174,24 @@
 
         .qr-wrapper {
             background: #fff;
-            padding: 16px;
+            padding: 12px;
             border-radius: 16px;
             box-shadow: 0 8px 24px rgba(0,0,0,0.3);
             display: none;
             align-items: center;
             justify-content: center;
-            width: 350px;
-            height: 350px;
+            width: 90vw;
+            max-width: 340px;
+            height: 90vw;
+            max-height: 340px;
+            box-sizing: border-box;
         }
 
         #qrcode canvas, #qrcode img {
-            width: 318px !important;
-            height: 318px !important;
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 316px;
+            max-height: 316px;
             image-rendering: -moz-crisp-edges;
             image-rendering: -webkit-crisp-edges;
             image-rendering: pixelated;
@@ -708,18 +713,18 @@
         text: {
             low: 50,
             medium: 100,
-            high: 250,
-            'very-high': 500,
-            extreme: 800,
-            max: 1200
+            high: 180,
+            'very-high': 300,
+            extreme: 450,
+            max: 600
         },
         file: {
-            low: 300,
-            medium: 600,
-            high: 1000,
-            'very-high': 1500,
-            extreme: 2000,
-            max: 3000
+            low: 150,
+            medium: 300,
+            high: 450,
+            'very-high': 600,
+            extreme: 800,
+            max: 1000
         }
     };
     var currentDensityLevel = "medium";
@@ -746,6 +751,11 @@
         
         var chunksCount = Math.ceil(text.length / chunkSize);
         document.getElementById('chunk-count').innerText = chunksCount + ' chunks (' + chunkSize + ' chars/chunk)';
+    }
+
+    function getQrSize() {
+        var size = Math.min(316, window.innerWidth - 64);
+        return size * 2;
     }
 
     function startSending() {
@@ -780,10 +790,11 @@
         // Initialize QR library
         var qrContainer = document.getElementById("qrcode");
         qrContainer.innerHTML = ''; // Clear
+        var qrSize = getQrSize();
         qrGenerator = new QRCode(qrContainer, {
             text: "1/1:Init",
-            width: 636,
-            height: 636,
+            width: qrSize,
+            height: qrSize,
             correctLevel: QRCode.CorrectLevel.L
         });
         
@@ -1281,10 +1292,11 @@
         
         var qrContainer = document.getElementById("qrcode");
         qrContainer.innerHTML = ''; // Clear
+        var qrSize = getQrSize();
         qrGenerator = new QRCode(qrContainer, {
             text: "1/1:Init",
-            width: 636,
-            height: 636,
+            width: qrSize,
+            height: qrSize,
             correctLevel: QRCode.CorrectLevel.L
         });
         
