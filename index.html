@@ -360,6 +360,7 @@
             align-items: center;
             background: rgba(239, 68, 68, 0.15);
             color: #ef4444;
+            -webkit-text-fill-color: #ef4444;
             border: 1px solid rgba(239, 68, 68, 0.3);
             padding: 2px 8px;
             border-radius: 9999px;
@@ -660,6 +661,11 @@
 
     function startSending() {
         var text = document.getElementById('send-input').value.trim();
+        if (text === "/file") {
+            enableFileMode();
+            document.getElementById('send-input').value = "";
+            return;
+        }
         if (!text) {
             alert("Please enter some text to send.");
             return;
@@ -1195,16 +1201,24 @@
             });
     }
 
-    // Check URL parameters for file mode activation
-    var urlParams = new URLSearchParams(window.location.search);
-    var isFileMode = urlParams.get("mode") === "file";
-    
-    if (isFileMode) {
+    function enableFileMode() {
         chunkSize = 800; // Update the dynamic chunk size
         document.getElementById('text-input-container').style.display = 'none';
         document.getElementById('file-input-container').style.display = 'block';
         document.getElementById('file-mode-badge').style.display = 'inline-flex';
         document.getElementById('chunk-count').innerText = '0 chunks (800 chars/chunk)';
+        
+        // Push URL parameter dynamically without reloading page
+        var newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + "?mode=file";
+        window.history.pushState({ path: newUrl }, '', newUrl);
+    }
+
+    // Check URL parameters for file mode activation
+    var urlParams = new URLSearchParams(window.location.search);
+    var isFileMode = urlParams.get("mode") === "file";
+    
+    if (isFileMode) {
+        enableFileMode();
     }
 
     // Setup drag and drop event listeners
