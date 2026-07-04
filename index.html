@@ -204,6 +204,59 @@
             image-rendering: crisp-edges;
         }
 
+        /* Sleek Modern Modal System */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(15, 23, 42, 0.85); /* Deep slate backdrop */
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border: 1px solid var(--border-card);
+            border-radius: 20px;
+            padding: 24px;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            animation: modalFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            box-sizing: border-box;
+            color: var(--text-main);
+        }
+
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95) translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .modal-header {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--text-main);
+            width: 100%;
+            text-align: center;
+        }
+
         .qr-controls {
             display: flex;
             align-items: center;
@@ -516,21 +569,10 @@
             </div>
             
             <div id="sender-camera-panel" style="margin-top: 15px; display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%;">
-                <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
-                    <div id="sender-cam-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; transition: background 0.3s;"></div>
-                    <span>Bi-directional Optical Feedback Link</span>
-                </div>
-                <div id="sender-camera-controls" style="display: none; margin-bottom: 5px; width: 200px; gap: 6px;">
-                    <select id="sender-camera-select" class="select-input" style="font-size: 0.75rem; padding: 4px 8px; height: auto; flex: 1;" onchange="switchSenderCamera(this.value)">
-                        <option value="">Default Camera</option>
-                    </select>
-                    <button type="button" class="btn" style="padding: 4px 8px; font-size: 0.75rem; background: var(--bg-base); border: 1px solid var(--border-card);" onclick="flipSenderCamera()">Flip</button>
-                </div>
-                <div id="sender-video-container" style="position: relative; width: 200px; height: 150px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-card); background: #000; display: none;">
-                    <video id="sender-video" style="width: 100%; height: 100%; object-fit: cover;" autoplay playsinline muted></video>
-                    <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; box-shadow: inset 0 0 15px rgba(16, 185, 129, 0.4); pointer-events: none; border: 2px solid #10b981; border-radius: 8px; box-sizing: border-box; transition: all 0.3s;" id="sender-video-border"></div>
-                </div>
-                <button type="button" id="btn-toggle-sender-cam" class="btn" style="padding: 6px 12px; font-size: 0.8rem; background: var(--bg-base); border: 1px solid var(--border-card);" onclick="toggleSenderCam()">Enable Feedback Camera</button>
+                <button type="button" id="btn-toggle-sender-cam" class="btn" style="padding: 10px 16px; font-size: 0.85rem; background: var(--bg-base); border: 1px solid var(--border-card);" onclick="openSenderCamModal()">
+                    <div id="sender-cam-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; display: inline-block; margin-right: 8px; transition: background 0.3s;"></div>
+                    <span id="sender-cam-btn-text">Enable Feedback Camera</span>
+                </button>
             </div>
         </div>
     </div>
@@ -558,13 +600,7 @@
 
         <button id="btn-start-scan" class="btn" onclick="toggleScanner()">Start Scanner</button>
         
-        <!-- Feedback QR Code Display -->
-        <div id="receiver-feedback-card" style="display: none; flex-direction: column; align-items: center; gap: 10px; margin-top: 15px; padding: 15px; background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-card); width: 100%; box-sizing: border-box;">
-            <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">Point this code at the sender's camera</div>
-            <div id="feedback-qrcode" style="background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: inline-block;"></div>
-            <div style="font-size: 0.75rem; color: var(--text-muted);" id="feedback-desc">Requesting missing chunks...</div>
-            <button class="btn" style="padding: 10px 16px; font-size: 0.85rem; width: 100%; border: none;" onclick="resumeReceiverScanning()">Resume Scanning</button>
-        </div>
+
 
         <div id="hud-status" class="hud-status-card" style="display: none;">
             <div style="display: flex; justify-content: space-between; font-weight: 600;">
@@ -707,12 +743,14 @@
     var senderScanTimer = null;
     var lastScannedFeedback = "";
     
-    function toggleSenderCam() {
-        if (senderCamIsActive) {
-            stopSenderCam();
-        } else {
-            startSenderCam();
-        }
+    function openSenderCamModal() {
+        document.getElementById('sender-camera-modal').style.display = 'flex';
+        startSenderCam();
+    }
+
+    function closeSenderCamModal() {
+        document.getElementById('sender-camera-modal').style.display = 'none';
+        stopSenderCam();
     }
 
     function handleInput() {
@@ -850,7 +888,7 @@
                     console.warn("Video play failed, browser policy might require click:", e);
                 });
                 
-                document.getElementById('btn-toggle-sender-cam').innerText = "Disable Feedback Camera";
+                document.getElementById('sender-cam-btn-text').innerText = "Disable Feedback Camera";
                 document.getElementById('sender-cam-status-dot').style.background = "#10b981";
                 senderCamIsActive = true;
                 
@@ -971,7 +1009,7 @@
         }
         document.getElementById('sender-video-container').style.display = 'none';
         document.getElementById('sender-camera-controls').style.display = 'none';
-        document.getElementById('btn-toggle-sender-cam').innerText = "Enable Feedback Camera";
+        document.getElementById('sender-cam-btn-text').innerText = "Enable Feedback Camera";
         document.getElementById('sender-cam-status-dot').style.background = "#94a3b8";
     }
 
@@ -1660,14 +1698,13 @@
             feedbackQrGenerator.clear();
             feedbackQrGenerator.makeCode(payload);
             
-            document.getElementById('hud-status').style.display = 'none';
-            document.getElementById('receiver-feedback-card').style.display = 'flex';
+            // Open receiver feedback modal
+            document.getElementById('receiver-feedback-modal').style.display = 'flex';
         }
     }
 
     function resumeReceiverScanning() {
-        document.getElementById('receiver-feedback-card').style.display = 'none';
-        document.getElementById('hud-status').style.display = 'block';
+        document.getElementById('receiver-feedback-modal').style.display = 'none';
         startScanner(true); // Resume scanning
     }
 
@@ -1720,6 +1757,44 @@
         }, false);
     }
 </script>
+
+<!-- Sleek Modern Modal Overlays -->
+<div id="sender-camera-modal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">Feedback Camera Link</div>
+        <div style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-top: -8px;">
+            Point your camera at the receiver's screen to capture missing chunks.
+        </div>
+        
+        <div id="sender-camera-controls" style="display: none; margin-bottom: 5px; width: 100%; gap: 6px;">
+            <select id="sender-camera-select" class="select-input" style="font-size: 0.75rem; padding: 4px 8px; height: auto; flex: 1;" onchange="switchSenderCamera(this.value)">
+                <option value="">Default Camera</option>
+            </select>
+            <button type="button" class="btn" style="padding: 4px 8px; font-size: 0.75rem; background: var(--bg-base); border: 1px solid var(--border-card);" onclick="flipSenderCamera()">Flip</button>
+        </div>
+        
+        <div id="sender-video-container" style="position: relative; width: 100%; height: 210px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-card); background: #000; display: none;">
+            <video id="sender-video" style="width: 100%; height: 100%; object-fit: cover;" autoplay playsinline muted></video>
+            <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; box-shadow: inset 0 0 15px rgba(16, 185, 129, 0.4); pointer-events: none; border: 2px solid #10b981; border-radius: 12px; box-sizing: border-box; transition: all 0.3s;" id="sender-video-border"></div>
+        </div>
+        
+        <button class="btn btn-secondary" style="width: 100%; border: none;" onclick="closeSenderCamModal()">Close Camera</button>
+    </div>
+</div>
+
+<div id="receiver-feedback-modal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">Scan Missing Chunks</div>
+        <div style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-top: -8px;">
+            Point this code at the sender's camera to request the missing chunks.
+        </div>
+        
+        <div id="feedback-qrcode" style="background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: inline-block;"></div>
+        <div style="font-size: 0.8rem; color: var(--text-muted); text-align: center;" id="feedback-desc">Requesting missing chunks...</div>
+        
+        <button class="btn" style="width: 100%; border: none;" onclick="resumeReceiverScanning()">Resume Scanning</button>
+    </div>
+</div>
 
 </body>
 </html>
