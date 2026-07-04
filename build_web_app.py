@@ -761,9 +761,13 @@ def main():
     function playFrames() {{
         if (sendTimer) clearInterval(sendTimer);
         
+        if (isSenderAcousticEnabled) {{
+            isWaitingForAck = true;
+            startSenderListening();
+        }}
+        
         function tickFrame() {{
             if (qrChunks.length === 0) return;
-            if (isWaitingForAck) return; // Wait until acoustic ACK clears or times out
             
             var total = qrChunks.length;
             
@@ -774,6 +778,7 @@ def main():
                 batchStart = currentBatchIndex * batchSize;
                 batchEnd = Math.min(batchStart + batchSize, total);
                 
+                // Wrap frame index strictly within the current batch boundary
                 if (currentFrameIndex < batchStart || currentFrameIndex >= batchEnd) {{
                     currentFrameIndex = batchStart;
                 }}
@@ -785,21 +790,16 @@ def main():
             qrGenerator.clear();
             qrGenerator.makeCode(headerText);
             
-            document.getElementById('frame-indicator').innerText = (currentFrameIndex + 1) + " / " + total;
+            var indicatorText = (currentFrameIndex + 1) + " / " + total;
+            if (isSenderAcousticEnabled) {{
+                indicatorText += " (Batch " + (currentBatchIndex + 1) + ")";
+            }}
+            document.getElementById('frame-indicator').innerText = indicatorText;
             
             if (isSenderAcousticEnabled) {{
-                var nextIdx = currentFrameIndex + 1;
-                if (nextIdx >= batchEnd) {{
-                    // Pause on the final frame of this batch and wait for ACK
-                    currentFrameIndex = batchEnd - 1;
-                    isWaitingForAck = true;
-                    startSenderListening();
-                    
-                    if (ackTimeout) clearTimeout(ackTimeout);
-                    ackTimeout = setTimeout(onSenderAckTimeout, 3500);
-                }} else {{
-                    currentFrameIndex = nextIdx;
-                }}
+                // Loop continuously inside the current batch
+                var range = batchEnd - batchStart;
+                currentFrameIndex = batchStart + (currentFrameIndex - batchStart + 1) % range;
             }} else {{
                 currentFrameIndex = (currentFrameIndex + 1) % total;
             }}
@@ -807,16 +807,6 @@ def main():
         
         tickFrame(); // Render first frame instantly
         sendTimer = setInterval(tickFrame, frameDuration);
-    }}
-
-    function onSenderAckTimeout() {{
-        if (!isWaitingForAck) return;
-        isWaitingForAck = false;
-        console.log("Acoustic ACK timeout. Replaying current batch.");
-        
-        // Reset to start of current batch
-        currentFrameIndex = currentBatchIndex * batchSize;
-        playFrames();
     }}
 
     function startSenderListening() {{
@@ -879,19 +869,28 @@ def main():
         }}
         
         // Real-time peak volume diagnostics in the frame indicator
-        document.getElementById('frame-indicator').innerText = "Listen ACK (Peak: " + peak + " / 90)...";
+        if (qrChunks.length > 0) {{
+            document.getElementById('frame-indicator').innerText = 
+                (currentFrameIndex + 1) + " / " + qrChunks.length + 
+                " | Mic Peak: " + peak + " / 90 (Batch " + (currentBatchIndex + 1) + ")";
+        }}
         
         if (peak > 90) {{ // Sensitive threshold (90 out of 255)
             console.log("Acoustic ACK received successfully! Peak: " + peak);
-            isWaitingForAck = false;
-            if (ackTimeout) clearTimeout(ackTimeout);
             
+            // Advance to next batch
             currentBatchIndex++;
             var totalBatches = Math.ceil(qrChunks.length / batchSize);
             if (currentBatchIndex >= totalBatches) {{
                 currentBatchIndex = 0; // Loop completed
             }}
             currentFrameIndex = currentBatchIndex * batchSize;
+            
+            // Play a local tick sound indicator
+            try {{
+                playSound('tick');
+            }} catch(e) {{}}
+            
             playFrames();
         }} else {{
             requestAnimationFrame(detectAckTone);
@@ -901,7 +900,6 @@ def main():
     function togglePlay() {{
         if (isSendingPlaying) {{
             clearInterval(sendTimer);
-            if (ackTimeout) clearTimeout(ackTimeout);
             isWaitingForAck = false;
             isSendingPlaying = false;
         }} else {{
@@ -1066,8 +1064,25 @@ def main():
     
     function toggleReceiverAcoustic(enabled) {{
         isReceiverAcousticEnabled = enabled;
-        if (enabled && !receiverAudioCtx) {{
-            receiverAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (enabled) {{
+            if (!receiverAudioCtx) {{
+                receiverAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }}
+            if (receiverAudioCtx.state === 'suspended') {{
+                receiverAudioCtx.resume();
+            }}
+            // Play a dummy silent tone to unlock iOS audio pipeline immediately
+            try {{
+                var osc = receiverAudioCtx.createOscillator();
+                var gain = receiverAudioCtx.createGain();
+                gain.gain.setValueAtTime(0, receiverAudioCtx.currentTime);
+                osc.connect(gain);
+                gain.connect(receiverAudioCtx.destination);
+                osc.start();
+                osc.stop(receiverAudioCtx.currentTime + 0.01);
+            }} catch(e) {{
+                console.warn("Audio unlock failed", e);
+            }}
         }}
     }}
 
