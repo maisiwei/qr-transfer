@@ -569,7 +569,7 @@ def main():
             <textarea id="send-input" placeholder="Type or paste your text here..." oninput="handleInput()"></textarea>
             <div class="char-counter">
                 <span id="char-count">0 characters</span>
-                <span id="chunk-count">0 chunks (800 chars/chunk)</span>
+                <span id="chunk-count">0 chunks (600 chars/chunk)</span>
             </div>
             <button id="btn-start-send" class="btn" onclick="startSending()">Generate QR Loop</button>
         </div>
@@ -760,7 +760,7 @@ def main():
     // File upload state variables
     var selectedFile = null;
     var fileBase64 = "";
-    var chunkSize = 800; // Locked at 800 chars/chunk
+    var chunkSize = 600; // Locked at 600 chars/chunk
 
     // Feedback QR Sender Variables
     var senderCamStream = null;
@@ -783,8 +783,8 @@ def main():
         var text = document.getElementById('send-input').value;
         document.getElementById('char-count').innerText = text.length + ' characters';
         
-        var chunksCount = Math.ceil(text.length / 800);
-        document.getElementById('chunk-count').innerText = chunksCount + ' chunks (800 chars/chunk)';
+        var chunksCount = Math.ceil(text.length / 600);
+        document.getElementById('chunk-count').innerText = chunksCount + ' chunks (600 chars/chunk)';
     }}
 
     function getQrSize() {{
